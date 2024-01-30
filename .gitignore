@@ -1,0 +1,6 @@
+*.txt
+*.dsw
+*.dsp
+*.exe
+*.json
+DtConsole_backup.cpp
