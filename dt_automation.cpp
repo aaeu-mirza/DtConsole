@@ -109,8 +109,6 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
 
          value = pBuffer32[i];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &voltage);
-         LowpassFilter_put(&lowpass_volt, voltage);
-         voltage = LowpassFilter_get(&lowpass_volt);
 
          fprintf(stream, "%.3f,%f\n", textfile_time, voltage);
          // fprintf( stream, "%.3f \t%f volts", textfile_time, voltage );
@@ -304,6 +302,12 @@ int main()
    CHECKERROR(olDaSetClockSource(hAD, OL_CLK_INTERNAL));
    CHECKERROR(olDaSetClockFrequency(hAD, 1000.0));
    CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_NONE));
+
+   /* Set channel 0 coupling type to AC coupling */
+   CHECKERROR (olDaSetCouplingType (hAD, 0, AC));
+   /* Set channel 0 current source to internal */
+   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 0, INTERNAL));
+   
    CHECKERROR(olDaConfig(hAD));
 
    HBUF hBufs[NUM_OL_BUFFERS];
