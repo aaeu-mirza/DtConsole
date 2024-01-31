@@ -29,6 +29,125 @@ while(0)
 #define NUM_OL_BUFFERS 4
 
 int counter = 0;
+BOOL    tfileopen = 0;
+DBL     textfile_time = 0;
+ULNG glist_resume = 0; 
+
+BOOL save_data(HDASS hAD, HBUF hBuf)
+{
+/*
+This function writes the specified buffer to the volts output file:
+ADCFILE2.  The function returns TRUE if successful.  Otherwise, 
+it returns FALSE and writes an error message to the specified
+string ( strlen is the max length of the input string )
+*/
+    UINT strlen = 80;
+    char lpstr[80];
+    UINT size=0L;
+    ECODE status=OLNOERROR;
+    FILE *stream;
+	BOOL rval=FALSE;
+	DBL max=0, min=0;
+	UINT resolution, listsize;
+	UINT encoding;
+	ULNG samples;
+	ULNG value;
+	PWORD pBuffer= NULL;
+	PDWORD pBuffer32 = NULL;
+	DBL voltage, freq;
+	ULNG i = 0, j = 0;
+	DBL gainlist[1024];
+	DBL currentglistentry;
+
+	/* get sub system information for code/volts conversion */
+    
+	status = olDaGetRange(hAD,&max,&min);
+	if( status == OLNOERROR )
+		status = olDaGetEncoding(hAD,&encoding);
+	if( status == OLNOERROR )
+		status = olDaGetResolution(hAD,&resolution);
+	if( status == OLNOERROR )	
+		status = olDmGetValidSamples( hBuf, &samples );
+    if( status == OLNOERROR )
+        status = olDmGetDataWidth( hBuf, &size );
+	if(	status == OLNOERROR ) 
+		olDaGetClockFrequency(hAD, &freq);
+	if(	status == OLNOERROR ) 
+		status = olDaGetChannelListSize(hAD, &listsize);
+	if( status != OLNOERROR ) {
+        olDaGetErrorString( status, lpstr, strlen );
+    	return FALSE;
+    }
+	
+	for (j=0;j<listsize; j++) {
+		olDaGetGainListEntry(hAD, j, &currentglistentry);
+		gainlist[j] = currentglistentry;
+	}
+
+	j = glist_resume;  // set current channel list element to either 0 or the next one in the list
+						// this is encase the buffersize is not divisible by the channel list size
+
+    // write the data
+    rval = TRUE;
+    if (tfileopen)
+		stream = fopen( "volts.csv", "a+" );  //append to existing file
+	else {
+		stream = fopen( "volts.csv", "w" );	  //open new file
+		tfileopen = 1;
+		textfile_time = 0;
+		fprintf( stream, "Time,Volts\n");
+	}
+            /* get pointer to the buffer */
+            if (resolution > 16)
+            {
+				CHECKERROR (olDmGetBufferPtr( hBuf,(LPVOID*)&pBuffer32));
+				
+				while (i < samples)
+				{
+					
+					value = pBuffer32[i];
+					olDaCodeToVolts(min, max, gainlist[j]/*gain*/, resolution, encoding, value, &voltage);
+                    LowpassFilter_put(&lowpass_volt, voltage);
+                    voltage = LowpassFilter_get(&lowpass_volt);
+
+					fprintf( stream, "%.3f,%f\n", textfile_time, voltage );
+					// fprintf( stream, "%.3f \t%f volts", textfile_time, voltage );
+					textfile_time += (1/freq);
+					i++;
+					if (j==listsize-1)
+						j = 0;
+					else 
+						j++;					
+				}
+				glist_resume = j;  // hold current list element position and gain for next buffer
+			}
+
+            else
+			{
+				CHECKERROR (olDmGetBufferPtr( hBuf,(LPVOID*)&pBuffer));
+				
+				while (i < samples)
+				{
+					value = pBuffer[i];
+					olDaCodeToVolts(min, max, gainlist[j]/*gain*/, resolution, encoding, value, &voltage);
+					fprintf( stream, "%.3f,%f\n", textfile_time, voltage );
+					// fprintf( stream, "%.3f \t%f volts\n", textfile_time, voltage );
+					textfile_time += (1/freq);
+					i++;
+					if (j==listsize-1)
+						j = 0;
+					else 
+						j++;
+				}
+				glist_resume = j;  // hold current list element position and gain for next buffer
+			}
+	
+			
+   fclose( stream );
+   //system( "type volts.txt" );
+
+    return rval;
+}
 
 void 
 process_data(HDASS hAD, HBUF hBuffer)
@@ -48,9 +167,13 @@ process_data(HDASS hAD, HBUF hBuffer)
       olDaGetRange(hAD,&max,&min);
       olDaGetEncoding(hAD,&encoding);
       olDaGetResolution(hAD,&resolution);
+    //   printf("Max: %f Min: %f\n", max, min);
+    //   printf("Enc: %d\n", encoding);
+    //   printf("Res: %d\n", resolution);
 
       /* get max samples in input buffer */
       olDmGetValidSamples( hBuffer, &samples );
+    //   printf("Samp: %ld\n", samples);
 
       /* get pointer to the buffer */
       if (resolution > 16)
@@ -76,8 +199,10 @@ process_data(HDASS hAD, HBUF hBuffer)
       }
 
       volts = ((float)max-(float)min)/(1L<<resolution)*value + (float)min;
-      printf("%lf V - ", volts);
-   }
+    //   printf("%lf mV - ", volts*1000);
+      fflush(stdout);
+      printf("%lf\r", volts*1000);
+    }
 }
 
 
@@ -91,7 +216,8 @@ WndProc( HWND hWnd, UINT msg, WPARAM hAD, LPARAM lParam )
           HBUF hBuf;
           counter++;
           olDaGetBuffer( (HDASS)hAD, &hBuf );
-          process_data((HDASS)hAD, hBuf);
+        //   process_data( (HDASS)hAD, hBuf );
+          save_data( (HDASS)hAD, hBuf );
           olDaPutBuffer( (HDASS)hAD, hBuf );
           break;
 
@@ -234,7 +360,7 @@ int main()
 
    for( i=0; i<NUM_OL_BUFFERS; i++ ) 
    {
-      olDmFreeBuffer( hBufs[i] );
+        olDmFreeBuffer( hBufs[i] );
    }   
 
    olDaTerminate( hDev );
