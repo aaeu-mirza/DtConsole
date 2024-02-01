@@ -54,6 +54,7 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
    PWORD pBuffer = NULL;
    PDWORD pBuffer32 = NULL;
    DBL voltage, freq;
+   DBL volt_x, volt_y, volt_z;
    ULNG i = 0, j = 0;
    DBL gainlist[1024];
    DBL currentglistentry;
@@ -97,7 +98,7 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
       stream = fopen("volts.csv", "w"); // open new file
       tfileopen = 1;
       textfile_time = 0;
-      fprintf(stream, "Time,Volts\n");
+      fprintf(stream, "Time,Volts(x),Volts(y),Volts(z)\n");
    }
    /* get pointer to the buffer */
    if (resolution > 16)
@@ -106,14 +107,20 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
 
       while (i < samples)
       {
-
+         // value = pBuffer32[i+3];
+         // olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &voltage);
+         value = pBuffer32[i+2];
+         olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_x);
+         value = pBuffer32[i+1];
+         olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_y);
          value = pBuffer32[i];
-         olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &voltage);
+         olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_z);
 
-         fprintf(stream, "%.3f,%f\n", textfile_time, voltage);
+         fprintf(stream, "%.3f,%f,%f,%f\n", textfile_time, volt_x, volt_y, volt_z);
          // fprintf( stream, "%.3f \t%f volts", textfile_time, voltage );
          textfile_time += (1 / freq);
-         i++;
+         // i++;
+         i+=size;
          if (j == listsize - 1)
             j = 0;
          else
@@ -165,13 +172,9 @@ void process_data(HDASS hAD, HBUF hBuffer)
       olDaGetRange(hAD, &max, &min);
       olDaGetEncoding(hAD, &encoding);
       olDaGetResolution(hAD, &resolution);
-      //   printf("Max: %f Min: %f\n", max, min);
-      //   printf("Enc: %d\n", encoding);
-      //   printf("Res: %d\n", resolution);
 
       /* get max samples in input buffer */
       olDmGetValidSamples(hBuffer, &samples);
-      //   printf("Samp: %ld\n", samples);
 
       /* get pointer to the buffer */
       if (resolution > 16)
@@ -295,18 +298,37 @@ int main()
    CHECKERROR(olDaSetWndHandle(hAD, hWnd, 0));
 
    CHECKERROR(olDaSetDataFlow(hAD, OL_DF_CONTINUOUS));
-   CHECKERROR(olDaSetChannelListSize(hAD, 1));
+
+   // CHECKERROR(olDaSetChannelListSize(hAD, 1));
+   /* Set Channel List and index*/
+   CHECKERROR(olDaSetChannelListSize(hAD,4));
    CHECKERROR(olDaSetChannelListEntry(hAD, 0, 0));
-   CHECKERROR(olDaSetGainListEntry(hAD, 0, 1));
+   CHECKERROR(olDaSetChannelListEntry(hAD, 1, 1));
+   CHECKERROR(olDaSetChannelListEntry(hAD, 2, 2));
+   CHECKERROR(olDaSetChannelListEntry(hAD, 3, 3));
+   /* Set Channel Gain Values*/
+   CHECKERROR(olDaSetGainListEntry(hAD, 0, 100));
+   CHECKERROR(olDaSetGainListEntry(hAD, 1, 100));
+   CHECKERROR(olDaSetGainListEntry(hAD, 2, 100));
+   CHECKERROR(olDaSetGainListEntry(hAD, 3, 100));
+   /* Set channels coupling type to AC coupling */
+   CHECKERROR (olDaSetCouplingType (hAD, 0, AC));
+   CHECKERROR (olDaSetCouplingType (hAD, 1, AC));
+   CHECKERROR (olDaSetCouplingType (hAD, 2, AC));
+   CHECKERROR (olDaSetCouplingType (hAD, 3, AC));
+   /* Set channels current source to internal */
+   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 0, INTERNAL));
+   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 1, INTERNAL));
+   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 2, INTERNAL));
+   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 3, INTERNAL));
+
+
    CHECKERROR(olDaSetTrigger(hAD, OL_TRG_SOFT));
    CHECKERROR(olDaSetClockSource(hAD, OL_CLK_INTERNAL));
    CHECKERROR(olDaSetClockFrequency(hAD, 1000.0));
    CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_NONE));
+   // CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_MULTIPLE));
 
-   /* Set channel 0 coupling type to AC coupling */
-   CHECKERROR (olDaSetCouplingType (hAD, 0, AC));
-   /* Set channel 0 current source to internal */
-   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 0, INTERNAL));
    
    CHECKERROR(olDaConfig(hAD));
 
