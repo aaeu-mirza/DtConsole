@@ -4,7 +4,7 @@ PROGRAM: dt_automation.cpp
 
 PURPOSE:
     Open Layers data acquisition modified example implementing
-    continuous analog input operations for upto 4 channels using 
+    continuous analog input operations for upto 4 channels using
     windows messaging in a console environment.
 
 ****************************************************************************/
@@ -18,15 +18,15 @@ PURPOSE:
 #define NUM_CHANNELS 4 // Max 4 for DT9837
 #define ALL_CHANNEL_GAIN 100
 #define CLOCK_FREQUENCY 1000.0
-#define EN_MULTIPLE_CH_GAIN 1
+#define EN_MULTIPLE_CH_GAIN 1 //(1-ON,0-OFF)
 
 #if EN_MULTIPLE_CH_GAIN == 1
-#define CHANNEL_GAIN_0 100
-#define CHANNEL_GAIN_1 100
-#define CHANNEL_GAIN_2 100
-#define CHANNEL_GAIN_3 100
+#define CHANNEL_GAIN_0 100 // Z
+#define CHANNEL_GAIN_1 100 // Y
+#define CHANNEL_GAIN_2 100 // X
+#define CHANNEL_GAIN_3 100 // N/A
 #endif
-/* olDa error checking */ 
+/* olDa error checking */
 #define CHECKERROR(ecode)                           \
    do                                               \
    {                                                \
@@ -126,9 +126,9 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
          // olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &voltage);
 
          // Convert and store values
-         value = pBuffer32[i+2];
+         value = pBuffer32[i + 2];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_x);
-         value = pBuffer32[i+1];
+         value = pBuffer32[i + 1];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_y);
          value = pBuffer32[i];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_z);
@@ -140,27 +140,25 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
          // olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &voltage);
 
          // Convert and store values
-         value = pBuffer[i+2];
+         value = pBuffer[i + 2];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_x);
-         value = pBuffer[i+1];
+         value = pBuffer[i + 1];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_y);
          value = pBuffer[i];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_z);
-      
       }
-      
+
       // Print voltage values to file
       fprintf(stream, "%.3f,%f,%f,%f\n", textfile_time, volt_x, volt_y, volt_z);
       textfile_time += (1 / freq);
       // i++;
-      i+=size;
+      i += size;
       if (j == listsize - 1)
          j = 0;
       else
          j++;
    }
    glist_resume = j; // hold current list element position and gain for next buffer
-   
 
    fclose(stream);
    // system( "type volts.txt" );
@@ -170,10 +168,10 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
 
 void process_data(HDASS hAD, HBUF hBuffer)
 {
-    /*
-      This function writes the specified buffer record a single voltage
-      value from a single channel. It prints the value to the console
-   */
+   /*
+     This function writes the specified buffer record a single voltage
+     value from a single channel. It prints the value to the console
+  */
    DBL min = 0, max = 0;
    DBL volts;
    ULNG value;
@@ -332,10 +330,10 @@ int main()
 
 #if EN_MULTIPLE_CH_GAIN == 1
    /* Set individual Channel Gain Values */
-      CHECKERROR(olDaSetGainListEntry(hAD, 0, CHANNEL_GAIN_0));
-      CHECKERROR(olDaSetGainListEntry(hAD, 1, CHANNEL_GAIN_1));
-      CHECKERROR(olDaSetGainListEntry(hAD, 2, CHANNEL_GAIN_2));
-      CHECKERROR(olDaSetGainListEntry(hAD, 3, CHANNEL_GAIN_3));
+   CHECKERROR(olDaSetGainListEntry(hAD, 0, CHANNEL_GAIN_0));
+   CHECKERROR(olDaSetGainListEntry(hAD, 1, CHANNEL_GAIN_1));
+   CHECKERROR(olDaSetGainListEntry(hAD, 2, CHANNEL_GAIN_2));
+   CHECKERROR(olDaSetGainListEntry(hAD, 3, CHANNEL_GAIN_3));
 #endif
 
    /* Set the clock and frequency for data acquisition*/
