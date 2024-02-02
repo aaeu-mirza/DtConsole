@@ -14,7 +14,18 @@ PURPOSE:
 #include <conio.h>
 #include "oldaapi.h" // requires Open Layers Data Aquisition (olDa) packaged lib files.
 
+/* Config Params*/
+#define NUM_CHANNELS 4 // Max 4 for DT9837
+#define ALL_CHANNEL_GAIN 100
+#define CLOCK_FREQUENCY 1000.0
+#define EN_MULTIPLE_CH_GAIN 1
 
+#if EN_MULTIPLE_CH_GAIN == 1
+#define CHANNEL_GAIN_0 100
+#define CHANNEL_GAIN_1 100
+#define CHANNEL_GAIN_2 100
+#define CHANNEL_GAIN_3 100
+#endif
 /* olDa error checking */ 
 #define CHECKERROR(ecode)                           \
    do                                               \
@@ -303,27 +314,29 @@ int main()
    CHECKERROR(olDaSetWndHandle(hAD, hWnd, 0));
    CHECKERROR(olDaSetDataFlow(hAD, OL_DF_CONTINUOUS));
 
-   /* Set Channel List and index*/
-   CHECKERROR(olDaSetChannelListSize(hAD,4));
-   CHECKERROR(olDaSetChannelListEntry(hAD, 0, 0));
-   CHECKERROR(olDaSetChannelListEntry(hAD, 1, 1));
-   CHECKERROR(olDaSetChannelListEntry(hAD, 2, 2));
-   CHECKERROR(olDaSetChannelListEntry(hAD, 3, 3));
-   /* Set Channel Gain Values*/
-   CHECKERROR(olDaSetGainListEntry(hAD, 0, 100));
-   CHECKERROR(olDaSetGainListEntry(hAD, 1, 100));
-   CHECKERROR(olDaSetGainListEntry(hAD, 2, 100));
-   CHECKERROR(olDaSetGainListEntry(hAD, 3, 100));
-   /* Set channels coupling type to AC coupling */
-   CHECKERROR (olDaSetCouplingType (hAD, 0, AC));
-   CHECKERROR (olDaSetCouplingType (hAD, 1, AC));
-   CHECKERROR (olDaSetCouplingType (hAD, 2, AC));
-   CHECKERROR (olDaSetCouplingType (hAD, 3, AC));
-   /* Set channels current source to internal */
-   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 0, INTERNAL));
-   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 1, INTERNAL));
-   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 2, INTERNAL));
-   CHECKERROR (olDaSetExcitationCurrentSource (hAD, 3, INTERNAL));
+   CHECKERROR(olDaSetChannelListSize(hAD, NUM_CHANNELS));
+   for (int i = 0; i < NUM_CHANNELS; i++)
+   {
+      /* Set Channel List and index */
+      CHECKERROR(olDaSetChannelListEntry(hAD, i, i));
+
+      /* Set Channel Gain Values */
+      CHECKERROR(olDaSetGainListEntry(hAD, i, ALL_CHANNEL_GAIN));
+
+      /* Set channels coupling type to AC coupling */
+      CHECKERROR(olDaSetCouplingType(hAD, i, AC));
+
+      /* Set channels current source to internal */
+      CHECKERROR(olDaSetExcitationCurrentSource(hAD, i, INTERNAL));
+   }
+
+#if EN_MULTIPLE_CH_GAIN == 1
+   /* Set individual Channel Gain Values */
+      CHECKERROR(olDaSetGainListEntry(hAD, 0, CHANNEL_GAIN_0));
+      CHECKERROR(olDaSetGainListEntry(hAD, 1, CHANNEL_GAIN_1));
+      CHECKERROR(olDaSetGainListEntry(hAD, 2, CHANNEL_GAIN_2));
+      CHECKERROR(olDaSetGainListEntry(hAD, 3, CHANNEL_GAIN_3));
+#endif
 
    /* Set the clock and frequency for data acquisition*/
    CHECKERROR(olDaSetTrigger(hAD, OL_TRG_SOFT));
