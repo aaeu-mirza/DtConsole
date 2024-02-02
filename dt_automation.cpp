@@ -1,19 +1,21 @@
 /*-----------------------------------------------------------------------
 
-PROGRAM: DtConsole.cpp
+PROGRAM: dt_automation.cpp
 
 PURPOSE:
-    Open Layers data acquisition example showing how to implement a
-    continuous analog input operation using windows messaging in a
-    console environment.
+    Open Layers data acquisition modified example implementing
+    continuous analog input operations for upto 4 channels using 
+    windows messaging in a console environment.
 
 ****************************************************************************/
 
 #include <windows.h>
 #include <stdio.h>
 #include <conio.h>
-#include "oldaapi.h"
+#include "oldaapi.h" // requires Open Layers Data Aquisition (olDa) packaged lib files.
 
+
+/* olDa error checking */ 
 #define CHECKERROR(ecode)                           \
    do                                               \
    {                                                \
@@ -35,10 +37,10 @@ ULNG glist_resume = 0;
 BOOL save_data(HDASS hAD, HBUF hBuf)
 {
    /*
-   This function writes the specified buffer to the volts output file:
-   ADCFILE2.  The function returns TRUE if successful.  Otherwise,
-   it returns FALSE and writes an error message to the specified
-   string ( strlen is the max length of the input string )
+      This function writes the specified buffer to the volts output file:
+      volts.csv  The function returns TRUE if successful.  Otherwise,
+      it returns FALSE and writes an error message to the specified
+      string ( strlen is the max length of the input string )
    */
    UINT strlen = 80;
    char lpstr[80];
@@ -101,53 +103,53 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
       fprintf(stream, "Time,Volts(x),Volts(y),Volts(z)\n");
    }
    /* get pointer to the buffer */
-   if (resolution > 16)
-   {
-      CHECKERROR(olDmGetBufferPtr(hBuf, (LPVOID *)&pBuffer32));
 
-      while (i < samples)
+   CHECKERROR(olDmGetBufferPtr(hBuf, (LPVOID *)&pBuffer32));
+
+   while (i < samples)
+   {
+      if (resolution > 16)
       {
+         // Value reserved for channel 4
          // value = pBuffer32[i+3];
          // olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &voltage);
+
+         // Convert and store values
          value = pBuffer32[i+2];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_x);
          value = pBuffer32[i+1];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_y);
          value = pBuffer32[i];
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_z);
-
-         fprintf(stream, "%.3f,%f,%f,%f\n", textfile_time, volt_x, volt_y, volt_z);
-         // fprintf( stream, "%.3f \t%f volts", textfile_time, voltage );
-         textfile_time += (1 / freq);
-         // i++;
-         i+=size;
-         if (j == listsize - 1)
-            j = 0;
-         else
-            j++;
       }
-      glist_resume = j; // hold current list element position and gain for next buffer
-   }
-
-   else
-   {
-      CHECKERROR(olDmGetBufferPtr(hBuf, (LPVOID *)&pBuffer));
-
-      while (i < samples)
+      else
       {
+         // Value reserved for channel 4
+         // value = pBuffer[i+3];
+         // olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &voltage);
+
+         // Convert and store values
+         value = pBuffer[i+2];
+         olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_x);
+         value = pBuffer[i+1];
+         olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_y);
          value = pBuffer[i];
-         olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &voltage);
-         fprintf(stream, "%.3f,%f\n", textfile_time, voltage);
-         // fprintf( stream, "%.3f \t%f volts\n", textfile_time, voltage );
-         textfile_time += (1 / freq);
-         i++;
-         if (j == listsize - 1)
-            j = 0;
-         else
-            j++;
+         olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_z);
+      
       }
-      glist_resume = j; // hold current list element position and gain for next buffer
+      
+      // Print voltage values to file
+      fprintf(stream, "%.3f,%f,%f,%f\n", textfile_time, volt_x, volt_y, volt_z);
+      textfile_time += (1 / freq);
+      // i++;
+      i+=size;
+      if (j == listsize - 1)
+         j = 0;
+      else
+         j++;
    }
+   glist_resume = j; // hold current list element position and gain for next buffer
+   
 
    fclose(stream);
    // system( "type volts.txt" );
@@ -157,6 +159,10 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
 
 void process_data(HDASS hAD, HBUF hBuffer)
 {
+    /*
+      This function writes the specified buffer record a single voltage
+      value from a single channel. It prints the value to the console
+   */
    DBL min = 0, max = 0;
    DBL volts;
    ULNG value;
@@ -200,12 +206,12 @@ void process_data(HDASS hAD, HBUF hBuffer)
       }
 
       volts = ((float)max - (float)min) / (1L << resolution) * value + (float)min;
-      //   printf("%lf mV - ", volts*1000);
       fflush(stdout);
       printf("%lf\r", volts * 1000);
    }
 }
 
+/* This function is a windows api callback for processing the data buffers*/
 LRESULT WINAPI
 WndProc(HWND hWnd, UINT msg, WPARAM hAD, LPARAM lParam)
 {
@@ -243,10 +249,10 @@ WndProc(HWND hWnd, UINT msg, WPARAM hAD, LPARAM lParam)
    return 0;
 }
 
+/* Open Layers callback functionto initialize board*/
 BOOL CALLBACK
 EnumBrdProc(LPSTR lpszBrdName, LPSTR lpszDriverName, LPARAM lParam)
 {
-
    // Make sure we can Init Board
    if (OLSUCCESS != (olDaInitialize(lpszBrdName, (LPHDEV)lParam)))
    {
@@ -289,17 +295,14 @@ int main()
    if (!hWnd)
       exit(1);
 
+   /* Configuring the board*/
    HDEV hDev = NULL;
-   CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)&hDev));
-
    HDASS hAD = NULL;
+   CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)&hDev));
    CHECKERROR(olDaGetDASS(hDev, OLSS_AD, 0, &hAD));
-
    CHECKERROR(olDaSetWndHandle(hAD, hWnd, 0));
-
    CHECKERROR(olDaSetDataFlow(hAD, OL_DF_CONTINUOUS));
 
-   // CHECKERROR(olDaSetChannelListSize(hAD, 1));
    /* Set Channel List and index*/
    CHECKERROR(olDaSetChannelListSize(hAD,4));
    CHECKERROR(olDaSetChannelListEntry(hAD, 0, 0));
@@ -322,16 +325,17 @@ int main()
    CHECKERROR (olDaSetExcitationCurrentSource (hAD, 2, INTERNAL));
    CHECKERROR (olDaSetExcitationCurrentSource (hAD, 3, INTERNAL));
 
-
+   /* Set the clock and frequency for data acquisition*/
    CHECKERROR(olDaSetTrigger(hAD, OL_TRG_SOFT));
    CHECKERROR(olDaSetClockSource(hAD, OL_CLK_INTERNAL));
-   CHECKERROR(olDaSetClockFrequency(hAD, 1000.0));
+   CHECKERROR(olDaSetClockFrequency(hAD, CLOCK_FREQUENCY));
    CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_NONE));
    // CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_MULTIPLE));
 
-   
+   /* Store the config*/
    CHECKERROR(olDaConfig(hAD));
 
+   /* Allocating memory for data buffers*/
    HBUF hBufs[NUM_OL_BUFFERS];
    for (int i = 0; i < NUM_OL_BUFFERS; i++)
    {
@@ -346,6 +350,7 @@ int main()
       olDaPutBuffer(hAD, hBufs[i]);
    }
 
+   /* Start acquisition*/
    if (OLSUCCESS != (olDaStart(hAD)))
    {
       printf("A/D Operation Start Failed...hit any key to terminate.\n");
