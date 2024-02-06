@@ -280,8 +280,19 @@ EnumBrdProc(LPSTR lpszBrdName, LPSTR lpszDriverName, LPARAM lParam)
    return FALSE; // all set , board handle in lParam
 }
 
-int main()
+int main(bool use_default_values, int num_channels, float clk_freq, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
 {
+   if (use_default_values)
+   {
+      num_channels = NUM_CHANNELS;
+      all_channel_gain = ALL_CHANNEL_GAIN;
+      channel_0_gain = CHANNEL_GAIN_0;
+      channel_1_gain = CHANNEL_GAIN_1;
+      channel_2_gain = CHANNEL_GAIN_2;
+      channel_3_gain = CHANNEL_GAIN_3;
+      clk_freq = CLOCK_FREQUENCY;
+   }
+
    int i = 0;
    printf("Open Layers Continuous A/D Win32 Console Example\n");
 
@@ -312,14 +323,14 @@ int main()
    CHECKERROR(olDaSetWndHandle(hAD, hWnd, 0));
    CHECKERROR(olDaSetDataFlow(hAD, OL_DF_CONTINUOUS));
 
-   CHECKERROR(olDaSetChannelListSize(hAD, NUM_CHANNELS));
-   for (int i = 0; i < NUM_CHANNELS; i++)
+   CHECKERROR(olDaSetChannelListSize(hAD, num_channels));
+   for (int i = 0; i < num_channels; i++)
    {
       /* Set Channel List and index */
       CHECKERROR(olDaSetChannelListEntry(hAD, i, i));
 
       /* Set Channel Gain Values */
-      CHECKERROR(olDaSetGainListEntry(hAD, i, ALL_CHANNEL_GAIN));
+      CHECKERROR(olDaSetGainListEntry(hAD, i, all_channel_gain));
 
       /* Set channels coupling type to AC coupling */
       CHECKERROR(olDaSetCouplingType(hAD, i, AC));
@@ -330,16 +341,15 @@ int main()
 
 #if EN_MULTIPLE_CH_GAIN == 1
    /* Set individual Channel Gain Values */
-   CHECKERROR(olDaSetGainListEntry(hAD, 0, CHANNEL_GAIN_0));
-   CHECKERROR(olDaSetGainListEntry(hAD, 1, CHANNEL_GAIN_1));
-   CHECKERROR(olDaSetGainListEntry(hAD, 2, CHANNEL_GAIN_2));
-   CHECKERROR(olDaSetGainListEntry(hAD, 3, CHANNEL_GAIN_3));
+   CHECKERROR(olDaSetGainListEntry(hAD, 0, channel_0_gain));
+   CHECKERROR(olDaSetGainListEntry(hAD, 1, channel_1_gain));
+   CHECKERROR(olDaSetGainListEntry(hAD, 2, channel_2_gain));
+   CHECKERROR(olDaSetGainListEntry(hAD, 3, channel_3_gain));
 #endif
-
    /* Set the clock and frequency for data acquisition*/
    CHECKERROR(olDaSetTrigger(hAD, OL_TRG_SOFT));
    CHECKERROR(olDaSetClockSource(hAD, OL_CLK_INTERNAL));
-   CHECKERROR(olDaSetClockFrequency(hAD, CLOCK_FREQUENCY));
+   CHECKERROR(olDaSetClockFrequency(hAD, clk_freq));
    CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_NONE));
    // CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_MULTIPLE));
 
@@ -350,7 +360,7 @@ int main()
    HBUF hBufs[NUM_OL_BUFFERS];
    for (int i = 0; i < NUM_OL_BUFFERS; i++)
    {
-      if (OLSUCCESS != olDmAllocBuffer(GHND, 1000, &hBufs[i]))
+      if (OLSUCCESS != olDmAllocBuffer(GHND, (int)clk_freq, &hBufs[i]))
       {
          for (i--; i >= 0; i--)
          {
