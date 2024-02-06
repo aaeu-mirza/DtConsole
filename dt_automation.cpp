@@ -26,6 +26,10 @@ PURPOSE:
 #define CHANNEL_GAIN_2 100 // X
 #define CHANNEL_GAIN_3 100 // N/A
 #endif
+
+#define SENSITIVITY_VAL_X 101.3 // mV per g [CALIBRATED: DO NOT CHANGE]
+#define SENSITIVITY_VAL_Y 99.7  // mV per g [CALIBRATED: DO NOT CHANGE]
+#define SENSITIVITY_VAL_Z 101.9 // mV per g [CALIBRATED: DO NOT CHANGE]
 /* olDa error checking */
 #define CHECKERROR(ecode)                           \
    do                                               \
@@ -68,6 +72,7 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
    PDWORD pBuffer32 = NULL;
    DBL voltage, freq;
    DBL volt_x, volt_y, volt_z;
+   DBL accel_x, accel_y, accel_z;
    ULNG i = 0, j = 0;
    DBL gainlist[1024];
    DBL currentglistentry;
@@ -105,16 +110,15 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
    // write the data
    rval = TRUE;
    if (tfileopen)
-      stream = fopen("volts.csv", "a+"); // append to existing file
+      stream = fopen("accel.csv", "a+"); // append to existing file
    else
    {
-      stream = fopen("volts.csv", "w"); // open new file
+      stream = fopen("accel.csv", "w"); // open new file
       tfileopen = 1;
       textfile_time = 0;
-      fprintf(stream, "Time,Volts(x),Volts(y),Volts(z)\n");
+      fprintf(stream, "Time,accel(x),accel(y),accel(z)\n");
    }
    /* get pointer to the buffer */
-
    CHECKERROR(olDmGetBufferPtr(hBuf, (LPVOID *)&pBuffer32));
 
    while (i < samples)
@@ -148,8 +152,15 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
          olDaCodeToVolts(min, max, gainlist[j] /*gain*/, resolution, encoding, value, &volt_z);
       }
 
+      // printf("ValueX: %d\n",volt_x);
+
+      accel_x = volt_x/(SENSITIVITY_VAL_X/1000);
+      accel_y = volt_y/(SENSITIVITY_VAL_Y/1000);
+      accel_z = volt_z/(SENSITIVITY_VAL_Z/1000);
+
       // Print voltage values to file
-      fprintf(stream, "%.3f,%f,%f,%f\n", textfile_time, volt_x, volt_y, volt_z);
+      fprintf(stream, "%.3f,%f,%f,%f\n", textfile_time, accel_x, accel_y, accel_z);
+
       textfile_time += (1 / freq);
       // i++;
       i += size;
@@ -228,12 +239,15 @@ WndProc(HWND hWnd, UINT msg, WPARAM hAD, LPARAM lParam)
    {
    case OLDA_WM_BUFFER_DONE:
       printf("Buffer Done Count: %ld \r", counter);
-      HBUF hBuf;
+      HBUF hBuf = NULL;
       counter++;
       olDaGetBuffer((HDASS)hAD, &hBuf);
-      //   process_data( (HDASS)hAD, hBuf );
-      save_data((HDASS)hAD, hBuf);
-      olDaPutBuffer((HDASS)hAD, hBuf);
+      if( hBuf )
+      {
+         //   process_data( (HDASS)hAD, hBuf );
+         save_data((HDASS)hAD, hBuf);
+         olDaPutBuffer((HDASS)hAD, hBuf);
+      }
       break;
 
    case OLDA_WM_QUEUE_DONE:
@@ -335,8 +349,8 @@ int main(bool use_default_values, int num_channels, float clk_freq, int all_chan
       /* Set channels coupling type to AC coupling */
       CHECKERROR(olDaSetCouplingType(hAD, i, AC));
 
-      /* Set channels current source to internal */
-      CHECKERROR(olDaSetExcitationCurrentSource(hAD, i, INTERNAL));
+      /* Set channels current source to disabled */
+      CHECKERROR(olDaSetExcitationCurrentSource(hAD, i, DISABLED));
    }
 
 #if EN_MULTIPLE_CH_GAIN == 1
@@ -360,7 +374,8 @@ int main(bool use_default_values, int num_channels, float clk_freq, int all_chan
    HBUF hBufs[NUM_OL_BUFFERS];
    for (int i = 0; i < NUM_OL_BUFFERS; i++)
    {
-      if (OLSUCCESS != olDmAllocBuffer(GHND, (int)clk_freq, &hBufs[i]))
+      // if (OLSUCCESS != olDmAllocBuffer(GHND, (int)clk_freq, &hBufs[i]))
+      if (OLSUCCESS != olDmCallocBuffer(GHND, 0, (int)clk_freq, 2,&hBufs[i]))
       {
          for (i--; i >= 0; i--)
          {
