@@ -154,9 +154,9 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
 
       // printf("ValueX: %d\n",volt_x);
 
-      accel_x = volt_x/(SENSITIVITY_VAL_X/1000);
-      accel_y = volt_y/(SENSITIVITY_VAL_Y/1000);
-      accel_z = volt_z/(SENSITIVITY_VAL_Z/1000);
+      accel_x = volt_x / (SENSITIVITY_VAL_X / 1000);
+      accel_y = volt_y / (SENSITIVITY_VAL_Y / 1000);
+      accel_z = volt_z / (SENSITIVITY_VAL_Z / 1000);
 
       // Print voltage values to file
       fprintf(stream, "%.3f,%f,%f,%f\n", textfile_time, accel_x, accel_y, accel_z);
@@ -238,17 +238,19 @@ WndProc(HWND hWnd, UINT msg, WPARAM hAD, LPARAM lParam)
    switch (msg)
    {
    case OLDA_WM_BUFFER_DONE:
+   {
       printf("Buffer Done Count: %ld \r", counter);
       HBUF hBuf = NULL;
       counter++;
       olDaGetBuffer((HDASS)hAD, &hBuf);
-      if( hBuf )
+      if (hBuf)
       {
          //   process_data( (HDASS)hAD, hBuf );
          save_data((HDASS)hAD, hBuf);
          olDaPutBuffer((HDASS)hAD, hBuf);
       }
-      break;
+   }
+   break;
 
    case OLDA_WM_QUEUE_DONE:
       printf("\nAcquisition stopped, rate too fast for current options.");
@@ -293,143 +295,145 @@ EnumBrdProc(LPSTR lpszBrdName, LPSTR lpszDriverName, LPARAM lParam)
    printf("%s succesfully initialized.\n", lpszBrdName);
    return FALSE; // all set , board handle in lParam
 }
-
-int main(bool use_default_values, int num_channels, float clk_freq, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
+extern "C"
 {
-   if (use_default_values)
+   void measure(bool use_default_values, int num_channels, float clk_freq, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
    {
-      num_channels = NUM_CHANNELS;
-      all_channel_gain = ALL_CHANNEL_GAIN;
-      channel_0_gain = CHANNEL_GAIN_0;
-      channel_1_gain = CHANNEL_GAIN_1;
-      channel_2_gain = CHANNEL_GAIN_2;
-      channel_3_gain = CHANNEL_GAIN_3;
-      clk_freq = CLOCK_FREQUENCY;
-   }
+      if (use_default_values)
+      {
+         num_channels = NUM_CHANNELS;
+         all_channel_gain = ALL_CHANNEL_GAIN;
+         channel_0_gain = CHANNEL_GAIN_0;
+         channel_1_gain = CHANNEL_GAIN_1;
+         channel_2_gain = CHANNEL_GAIN_2;
+         channel_3_gain = CHANNEL_GAIN_3;
+         clk_freq = CLOCK_FREQUENCY;
+      }
 
-   int i = 0;
-   printf("Open Layers Continuous A/D Win32 Console Example\n");
+      int i = 0;
+      printf("Open Layers Continuous A/D Win32 Console Example\n");
 
-   // create a window for messages
-   WNDCLASS wc;
-   memset(&wc, 0, sizeof(wc));
-   wc.lpfnWndProc = WndProc;
-   wc.lpszClassName = "DtConsoleClass";
-   RegisterClass(&wc);
+      // create a window for messages
+      WNDCLASS wc;
+      memset(&wc, 0, sizeof(wc));
+      wc.lpfnWndProc = WndProc;
+      wc.lpszClassName = "DtConsoleClass";
+      RegisterClass(&wc);
 
-   HWND hWnd = CreateWindow(wc.lpszClassName,
-                            NULL,
-                            NULL,
-                            0, 0, 0, 0,
-                            NULL,
-                            NULL,
-                            NULL,
-                            NULL);
+      HWND hWnd = CreateWindow(wc.lpszClassName,
+                               NULL,
+                               NULL,
+                               0, 0, 0, 0,
+                               NULL,
+                               NULL,
+                               NULL,
+                               NULL);
 
-   if (!hWnd)
-      exit(1);
+      if (!hWnd)
+         exit(1);
 
-   /* Configuring the board*/
-   HDEV hDev = NULL;
-   HDASS hAD = NULL;
-   CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)&hDev));
-   CHECKERROR(olDaGetDASS(hDev, OLSS_AD, 0, &hAD));
-   CHECKERROR(olDaSetWndHandle(hAD, hWnd, 0));
-   CHECKERROR(olDaSetDataFlow(hAD, OL_DF_CONTINUOUS));
+      /* Configuring the board*/
+      HDEV hDev = NULL;
+      HDASS hAD = NULL;
+      COUPLING_TYPE coup;
 
-   CHECKERROR(olDaSetChannelListSize(hAD, num_channels));
-   for (int i = 0; i < num_channels; i++)
-   {
-      /* Set Channel List and index */
-      CHECKERROR(olDaSetChannelListEntry(hAD, i, i));
+      CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)&hDev));
+      CHECKERROR(olDaGetDASS(hDev, OLSS_AD, 0, &hAD));
+      CHECKERROR(olDaSetWndHandle(hAD, hWnd, 0));
+      CHECKERROR(olDaSetDataFlow(hAD, OL_DF_CONTINUOUS));
 
-      /* Set Channel Gain Values */
-      CHECKERROR(olDaSetGainListEntry(hAD, i, all_channel_gain));
+      CHECKERROR(olDaSetChannelListSize(hAD, num_channels));
+      for (int i = 0; i < num_channels; i++)
+      {
+         /* Set Channel List and index */
+         CHECKERROR(olDaSetChannelListEntry(hAD, i, i));
 
-      /* Set channels coupling type to AC coupling */
-      CHECKERROR(olDaSetCouplingType(hAD, i, AC));
+         /* Set Channel Gain Values */
+         CHECKERROR(olDaSetGainListEntry(hAD, i, all_channel_gain));
 
-      /* Set channels current source to disabled */
-      CHECKERROR(olDaSetExcitationCurrentSource(hAD, i, DISABLED));
-   }
+         /* Set channels coupling type to AC coupling */
+         CHECKERROR(olDaSetCouplingType(hAD, i, AC));
+
+         /* Set channels current source to disabled */
+         CHECKERROR(olDaSetExcitationCurrentSource(hAD, i, INTERNAL));
+      }
 
 #if EN_MULTIPLE_CH_GAIN == 1
-   /* Set individual Channel Gain Values */
-   CHECKERROR(olDaSetGainListEntry(hAD, 0, channel_0_gain));
-   CHECKERROR(olDaSetGainListEntry(hAD, 1, channel_1_gain));
-   CHECKERROR(olDaSetGainListEntry(hAD, 2, channel_2_gain));
-   CHECKERROR(olDaSetGainListEntry(hAD, 3, channel_3_gain));
+      /* Set individual Channel Gain Values */
+      CHECKERROR(olDaSetGainListEntry(hAD, 0, channel_0_gain));
+      CHECKERROR(olDaSetGainListEntry(hAD, 1, channel_1_gain));
+      CHECKERROR(olDaSetGainListEntry(hAD, 2, channel_2_gain));
+      CHECKERROR(olDaSetGainListEntry(hAD, 3, channel_3_gain));
 #endif
-   /* Set the clock and frequency for data acquisition*/
-   CHECKERROR(olDaSetTrigger(hAD, OL_TRG_SOFT));
-   CHECKERROR(olDaSetClockSource(hAD, OL_CLK_INTERNAL));
-   CHECKERROR(olDaSetClockFrequency(hAD, clk_freq));
-   CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_NONE));
-   // CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_MULTIPLE));
+      /* Set the clock and frequency for data acquisition*/
+      CHECKERROR(olDaSetTrigger(hAD, OL_TRG_SOFT));
+      CHECKERROR(olDaSetClockSource(hAD, OL_CLK_INTERNAL));
+      CHECKERROR(olDaSetClockFrequency(hAD, clk_freq));
+      CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_NONE));
+      // CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_MULTIPLE));
 
-   /* Store the config*/
-   CHECKERROR(olDaConfig(hAD));
+      /* Store the config*/
+      CHECKERROR(olDaConfig(hAD));
 
-   /* Allocating memory for data buffers*/
-   HBUF hBufs[NUM_OL_BUFFERS];
-   for (int i = 0; i < NUM_OL_BUFFERS; i++)
-   {
-      // if (OLSUCCESS != olDmAllocBuffer(GHND, (int)clk_freq, &hBufs[i]))
-      if (OLSUCCESS != olDmCallocBuffer(GHND, 0, (int)clk_freq, 2,&hBufs[i]))
+      /* Allocating memory for data buffers*/
+      HBUF hBufs[NUM_OL_BUFFERS];
+      for (int i = 0; i < NUM_OL_BUFFERS; i++)
       {
-         for (i--; i >= 0; i--)
+         // if (OLSUCCESS != olDmAllocBuffer(GHND, (int)clk_freq, &hBufs[i]))
+         if (OLSUCCESS != olDmCallocBuffer(GHND, 0, (int)clk_freq, 2, &hBufs[i]))
          {
-            olDmFreeBuffer(hBufs[i]);
+            for (i--; i >= 0; i--)
+            {
+               olDmFreeBuffer(hBufs[i]);
+            }
+            exit(1);
          }
-         exit(1);
+         olDaPutBuffer(hAD, hBufs[i]);
       }
-      olDaPutBuffer(hAD, hBufs[i]);
-   }
 
-   /* Start acquisition*/
-   if (OLSUCCESS != (olDaStart(hAD)))
-   {
-      printf("A/D Operation Start Failed...hit any key to terminate.\n");
-   }
-   else
-   {
-      printf("A/D Operation Started...hit any key to terminate.\n\n");
-      printf("Buffer Done Count : %ld \r", counter);
-   }
-
-   MSG msg;
-   SetMessageQueue(50); // Increase the our message queue size so
-                        // we don't lose any data acq messages
-
-   // Acquire and dispatch messages until a key is hit...since we are a console app
-   // we are using a mix of Windows messages for data acquistion and console approaches
-   // for keyboard input.
-   //
-   while (GetMessage(&msg, // message structure
-                     hWnd, // handle of window receiving the message
-                     0,    // lowest message to examine
-                     0))   // highest message to examine
-   {
-      TranslateMessage(&msg); // Translates virtual key codes
-      DispatchMessage(&msg);  // Dispatches message to window
-      if (_kbhit())
+      /* Start acquisition*/
+      if (OLSUCCESS != (olDaStart(hAD)))
       {
-         _getch();
-         PostQuitMessage(0);
+         printf("A/D Operation Start Failed...hit any key to terminate.\n");
       }
+      else
+      {
+         printf("A/D Operation Started...hit any key to terminate.\n\n");
+         printf("Buffer Done Count : %ld \r", counter);
+      }
+
+      MSG msg;
+      SetMessageQueue(50); // Increase the our message queue size so
+                           // we don't lose any data acq messages
+
+      // Acquire and dispatch messages until a key is hit...since we are a console app
+      // we are using a mix of Windows messages for data acquistion and console approaches
+      // for keyboard input.
+      //
+      while (GetMessage(&msg, // message structure
+                        hWnd, // handle of window receiving the message
+                        0,    // lowest message to examine
+                        0))   // highest message to examine
+      {
+         TranslateMessage(&msg); // Translates virtual key codes
+         DispatchMessage(&msg);  // Dispatches message to window
+         if (_kbhit())
+         {
+            _getch();
+            PostQuitMessage(0);
+         }
+      }
+
+      // abort A/D operation
+      olDaAbort(hAD);
+      printf("\nA/D Operation Terminated \n");
+
+      for (i = 0; i < NUM_OL_BUFFERS; i++)
+      {
+         olDmFreeBuffer(hBufs[i]);
+      }
+
+      olDaTerminate(hDev);
+      exit(0);
    }
-
-   // abort A/D operation
-   olDaAbort(hAD);
-   printf("\nA/D Operation Terminated \n");
-
-   for (i = 0; i < NUM_OL_BUFFERS; i++)
-   {
-      olDmFreeBuffer(hBufs[i]);
-   }
-
-   olDaTerminate(hDev);
-   exit(0);
-
-   return 0;
 }

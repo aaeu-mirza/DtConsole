@@ -16,7 +16,7 @@ class DT9837():
     def __init__(self):
         dt_lib = ctypes.CDLL(
             "C:\_Automation\Win32\SDK\Examples\DtConsole\dt_lib.so")
-        self.measure = dt_lib.main
+        self.measure = dt_lib.measure
 
     def measure(self, use_default_vals=True):
         self.measure.argtypes = [ctypes.c_bool, ctypes.c_int, ctypes.c_float,
