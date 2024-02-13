@@ -14,15 +14,16 @@ PURPOSE:
 #include <stdbool.h>
 #include <conio.h>
 #include <math.h>
+#include <time.h>
 #include "oldaapi.h" // requires Open Layers Data Aquisition (olDa) packaged lib files.
 
 /* Config Params*/
 #define NUM_CHANNELS 4 // Max 4 for DT9837
 #define ALL_CHANNEL_GAIN 1 // Universal gain used for all channels (1 or 10)
 #define CLOCK_FREQUENCY 1000.0 // Internal clock frequency
-#define OUTPUT_FREQUENCY 46876.0 // Internal clock frequency
+#define OUTPUT_FREQUENCY 1000.0 // Internal clock frequency (Max 46875.0)
 #define DEFAULT_WAV_AMPLITUDE 3 //for output
-#define DEFAULT_WAV_FREQUENCY 100 //for output
+#define DEFAULT_WAV_FREQUENCY 1000 //for output
 
 #define EN_MULTIPLE_CH_GAIN 1 //(1-ON,0-OFF)
 
@@ -497,7 +498,7 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
    PWORD lpbuf= NULL;    
 
    CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)&hDev));
-
+   
    CHECKERROR(olDaGetDASS(hDev, OLSS_DA, 0, &hDA));
    CHECKERROR (olDaGetSSCapsEx(hDA,OLSSCE_MAXTHROUGHPUT,&freq));
    CHECKERROR (olDaGetSSCaps(hDA,OLSSC_NUMDMACHANS,&dma));
@@ -519,12 +520,7 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
 
    /* Store the config*/
    CHECKERROR(olDaConfig(hDA));
-
-   /* get sub system information for code/volts conversion */
-   CHECKERROR (olDaGetRange(hDA,&max,&min));
-   CHECKERROR (olDaGetEncoding(hDA,&encoding));
-   CHECKERROR (olDaGetResolution(hDA,&resolution));
-
+   
    if(read_input)
    {
       CHECKERROR(olDaGetDASS(hDev, OLSS_AD, 0, &hAD));
@@ -544,6 +540,10 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
       CHECKERROR(olDaConfig(hAD));
    }
 
+   /* get sub system information for code/volts conversion */
+   CHECKERROR (olDaGetRange(hDA,&max,&min));
+   CHECKERROR (olDaGetEncoding(hDA,&encoding));
+   CHECKERROR (olDaGetResolution(hDA,&resolution));
 
    /* convert max full scale to DAC units */
    volts = amplitude;
@@ -582,6 +582,12 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
    //    lpbuf[i++] = (UINT)minvalue;
    // }
 
+   /* for DAC's must set the number of valid samples in buffer */
+   CHECKERROR (olDmSetValidSamples(hBuf,size));
+
+   /* Put the buffer to the DAC */
+   CHECKERROR (olDaPutBuffer(hDA, hBuf));
+
    if(read_input)
    {
       /* Allocating memory for data buffers*/
@@ -599,12 +605,6 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
       }
    }
 
-   /* for DAC's must set the number of valid samples in buffer */
-   CHECKERROR (olDmSetValidSamples(hBuf,size));
-
-   /* Put the buffer to the DAC */
-   CHECKERROR (olDaPutBuffer(hDA, hBuf));
-
    /* Start acquisition*/
    if (OLSUCCESS != (olDaStart(hDA)))
    {
@@ -614,8 +614,8 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
    {
       printf("D/A Operation Started...hit any key to terminate.\n\n");
    }
-   
-   MSG msg;
+
+   printf("\nAquiring Data for %d seconds \n", duration);
    if(read_input)
    {
       /* Start acquisition*/
@@ -627,7 +627,10 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
       {
          printf("A/D Operation Started...hit any key to terminate.\n\n");
       }
-
+   
+      MSG msg;
+      time_t start = time(0);
+      double seconds_since_start = 0;
       SetMessageQueue(50); // Increase the our message queue size so
                            // we don't lose any data acq messages
 
@@ -642,14 +645,26 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
       {
          TranslateMessage(&msg); // Translates virtual key codes
          DispatchMessage(&msg);  // Dispatches message to window
-         if (_kbhit())
+         seconds_since_start = difftime( time(0), start);
+         
+         if (seconds_since_start > duration)
          {
-            _getch();
             PostQuitMessage(0);
          }
+         
+         /* Keyboard stop implementation*/
+         // if (_kbhit())
+         // {
+         //    _getch();
+         //    PostQuitMessage(0);
+         // }
       }
    }
-
+   else
+   {
+      Sleep(duration * 1000);
+   }
+   
    /*
       get the output buffer from the DAC subsystem and
       free the output buffer

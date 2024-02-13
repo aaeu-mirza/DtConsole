@@ -28,10 +28,10 @@ class DT9837():
         self.measure(use_default_vals, NUM_CHANNELS,
                      CLOCK_FREQUENCY, ALL_CHANNEL_GAIN, CHANNEL_GAIN_0, CHANNEL_GAIN_1, CHANNEL_GAIN_2, CHANNEL_GAIN_3)
 
-    def generate(self, use_default_vals=True, read_input=False):
+    def generate(self, use_default_vals=True, read_input=True):
         self.generate = self.dt_lib.generate
         self.generate.argtypes = [
-            ctypes.c_bool,  ctypes.c_bool, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+            ctypes.c_bool,  ctypes.c_bool, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
         self.generate(use_default_vals, read_input, 1000.0, ALL_CHANNEL_GAIN,
                       WAVEFORM_AMPLITUDE, WAVEFORM_FREQUENCY, WAVEFORM_DURATION)
 
@@ -46,5 +46,5 @@ if __name__ == "__main__":
 
     # signalanalyzer.measure()
     # signalanalyzer.measure(use_default_vals=False)
-    signalanalyzer.generate(use_default_vals=True, read_input=True)
+    signalanalyzer.generate(use_default_vals=False, read_input=True)
     # signalanalyzer.hello()
