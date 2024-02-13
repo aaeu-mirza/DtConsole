@@ -35,11 +35,6 @@ class DT9837():
         self.generate(use_default_vals, read_input, 1000.0, ALL_CHANNEL_GAIN,
                       WAVEFORM_AMPLITUDE, WAVEFORM_FREQUENCY, WAVEFORM_DURATION)
 
-    def hello(self):
-        self.hello = self.dt_lib.hello
-        self.hello.argtypes = [ctypes.c_char_p, ctypes.c_int]
-        self.hello(b"Mirza", 18)
-
 
 if __name__ == "__main__":
     signalanalyzer = DT9837()
@@ -47,4 +42,3 @@ if __name__ == "__main__":
     # signalanalyzer.measure()
     # signalanalyzer.measure(use_default_vals=False)
     signalanalyzer.generate(use_default_vals=False, read_input=True)
-    # signalanalyzer.hello()
