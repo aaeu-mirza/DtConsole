@@ -2,17 +2,17 @@
 import ctypes
 
 # Config Params
-NUM_CHANNELS = 4  # Max 4 for DT9837
+NUM_CHANNELS = 4  # Max 4 channels for DT9837
 ALL_CHANNEL_GAIN = 1  # 1 or 10
-CLOCK_FREQUENCY = 1000.0
+CLOCK_FREQUENCY = 1000.0  # Max: 46875Hz (output), 52700Hz (input)
 
-CHANNEL_GAIN_0 = 1  # Z
-CHANNEL_GAIN_1 = 1  # Y
-CHANNEL_GAIN_2 = 1  # X
-CHANNEL_GAIN_3 = 1  # N/A
+CHANNEL_GAIN_0 = 1  # Z (1 or 10)
+CHANNEL_GAIN_1 = 1  # Y (1 or 10)
+CHANNEL_GAIN_2 = 1  # X (1 or 10)
+CHANNEL_GAIN_3 = 1  # DAC (1 or 10)
 
-WAVEFORM_AMPLITUDE = 3  # in volts (V)
-WAVEFORM_FREQUENCY = 10  # in hertz (Hz)
+WAVEFORM_AMPLITUDE = 3  # in volts (V) [0V-10V]
+WAVEFORM_FREQUENCY = 10  # in hertz (Hz) [10Hz-400Hz]
 WAVEFORM_DURATION = 10  # in seconds (s)
 
 
@@ -21,14 +21,31 @@ class DT9837():
         self.dt_lib = ctypes.CDLL(
             "C:\_Automation\Win32\SDK\Examples\DtConsole\dt_lib.so")
 
-    def measure(self, use_default_vals=True):
+    def measure_acceleration(self, use_default_vals=True):
+        """This function measures the acceleration reading
+
+        A 3 axis accelerometer must be connected to the equipment that 
+        will be recorded indefinately until keyboard interrupt
+
+        :param use_default_vals: use the set default values of the equipment, defaults to True
+        :type use_default_vals: bool, optional
+        """
         self.measure = self.dt_lib.measure
         self.measure.argtypes = [ctypes.c_bool, ctypes.c_int, ctypes.c_float,
                                  ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
         self.measure(use_default_vals, NUM_CHANNELS,
                      CLOCK_FREQUENCY, ALL_CHANNEL_GAIN, CHANNEL_GAIN_0, CHANNEL_GAIN_1, CHANNEL_GAIN_2, CHANNEL_GAIN_3)
 
-    def generate(self, use_default_vals=True, read_input=True):
+    def generate_squarewave(self, use_default_vals=True, read_input=True):
+        """This function generates a simple squarewave
+
+        Generates a wave at the specified amplitude (V), frequency (Hz) and duration (in s)
+
+        :param use_default_vals: use the set default values of the equipment, defaults to True
+        :type use_default_vals: bool, optional
+        :param read_input: record the input into a csv, defaults to True
+        :type read_input: bool, optional
+        """
         self.generate = self.dt_lib.generate
         self.generate.argtypes = [
             ctypes.c_bool,  ctypes.c_bool, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
@@ -39,6 +56,6 @@ class DT9837():
 if __name__ == "__main__":
     signalanalyzer = DT9837()
 
-    # signalanalyzer.measure()
-    # signalanalyzer.measure(use_default_vals=False)
-    signalanalyzer.generate(use_default_vals=False, read_input=True)
+    # signalanalyzer.measure_acceleration()
+    # signalanalyzer.measure_acceleration(use_default_vals=False)
+    signalanalyzer.generate_squarewave(use_default_vals=False, read_input=True)
