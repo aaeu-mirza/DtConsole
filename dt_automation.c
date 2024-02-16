@@ -39,6 +39,15 @@ PURPOSE:
 #define SENSITIVITY_VAL_Z 101.9 // mV per g [CALIBRATED: DO NOT CHANGE]
 
 /* olDa error checking */
+#define CFG_SUCCESS 0
+#define CFG_FAILURE -1
+
+#define ERR_BOARD_CONFIG 1
+#define ERR_CHANNEL_CONFIG 2
+#define ERR_DATA_CONFIG 3
+#define ERR_MEASUREMENT 4
+#define ERR_DEINIT_CONFIG 5
+
 #define CHECKERROR(ecode)                           \
    do                                               \
    {                                                \
@@ -46,7 +55,7 @@ PURPOSE:
       if (OLSUCCESS != (olStatus = (ecode)))        \
       {                                             \
          printf("OpenLayers Error %d\n", olStatus); \
-         exit(1);                                   \
+         return CFG_FAILURE;                        \
       }                                             \
    } while (0)
 
@@ -309,24 +318,8 @@ EnumBrdProc(LPSTR lpszBrdName, LPSTR lpszDriverName, LPARAM lParam)
    printf("%s succesfully initialized.\n", lpszBrdName);
    return FALSE; // all set , board handle in lParam
 }
-
-void measure(bool use_default_values, int num_channels, float clk_freq, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
+int initialize(HWND *hWnd, HDEV *hDev)
 {
-   printf("def: %d %d %d\n", use_default_values, clk_freq, all_channel_gain);
-   if (use_default_values)
-   {
-      num_channels = NUM_CHANNELS;
-      all_channel_gain = ALL_CHANNEL_GAIN;
-      channel_0_gain = CHANNEL_GAIN_0;
-      channel_1_gain = CHANNEL_GAIN_1;
-      channel_2_gain = CHANNEL_GAIN_2;
-      channel_3_gain = CHANNEL_GAIN_3;
-      clk_freq = CLOCK_FREQUENCY;
-   }
-
-   int i = 0;
-   printf("Open Layers Continuous A/D Win32 Console Example\n");
-
    // create a window for messages
    WNDCLASS wc;
    memset(&wc, 0, sizeof(wc));
@@ -334,7 +327,7 @@ void measure(bool use_default_values, int num_channels, float clk_freq, int all_
    wc.lpszClassName = "DtConsoleClass";
    RegisterClass(&wc);
 
-   HWND hWnd = CreateWindow(wc.lpszClassName,
+   *hWnd = CreateWindow(wc.lpszClassName,
                             NULL,
                             NULL,
                             0, 0, 0, 0,
@@ -344,69 +337,82 @@ void measure(bool use_default_values, int num_channels, float clk_freq, int all_
                             NULL);
 
    if (!hWnd)
-      exit(1);
+      return CFG_FAILURE;
 
-   /* Configuring the board*/
-   HDEV hDev = NULL;
-   HDASS hAD = NULL;
-   COUPLING_TYPE coup;
+   CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)hDev));
+   return CFG_SUCCESS;
+}
 
-   CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)&hDev));
-   CHECKERROR(olDaGetDASS(hDev, OLSS_AD, 0, &hAD));
-   CHECKERROR(olDaSetWndHandle(hAD, hWnd, 0));
-   CHECKERROR(olDaSetDataFlow(hAD, OL_DF_CONTINUOUS));
+int config_board_input(HWND *hWnd, HDEV *hDev, HDASS *hAD)
+{
+   if(initialize(hWnd,hDev) == CFG_FAILURE)
+      return CFG_FAILURE;
+   
+   CHECKERROR(olDaGetDASS(*hDev, OLSS_AD, 0, hAD));
+   CHECKERROR(olDaSetWndHandle(*hAD, *hWnd, 0));
+   CHECKERROR(olDaSetDataFlow(*hAD, OL_DF_CONTINUOUS));
 
-   CHECKERROR(olDaSetChannelListSize(hAD, num_channels));
+   return CFG_SUCCESS;
+}
+
+int config_channels_input(HDASS *hAD, int num_channels, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
+{
+   CHECKERROR(olDaSetChannelListSize(*hAD, num_channels));
    for (int i = 0; i < num_channels; i++)
    {
       /* Set Channel List and index */
-      CHECKERROR(olDaSetChannelListEntry(hAD, i, i));
+      CHECKERROR(olDaSetChannelListEntry(*hAD, i, i));
 
       /* Set Channel Gain Values */
-      CHECKERROR(olDaSetGainListEntry(hAD, i, all_channel_gain));
+      CHECKERROR(olDaSetGainListEntry(*hAD, i, all_channel_gain));
 
       /* Set channels coupling type to AC coupling */
-      CHECKERROR(olDaSetCouplingType(hAD, i, AC));
+      CHECKERROR(olDaSetCouplingType(*hAD, i, AC));
 
       /* Set channels current source to disabled */
-      CHECKERROR(olDaSetExcitationCurrentSource(hAD, i, INTERNAL));
+      CHECKERROR(olDaSetExcitationCurrentSource(*hAD, i, INTERNAL));
    }
 
 #if EN_MULTIPLE_CH_GAIN == 1
    /* Set individual Channel Gain Values */
-   CHECKERROR(olDaSetGainListEntry(hAD, 0, channel_0_gain));
-   CHECKERROR(olDaSetGainListEntry(hAD, 1, channel_1_gain));
-   CHECKERROR(olDaSetGainListEntry(hAD, 2, channel_2_gain));
-   CHECKERROR(olDaSetGainListEntry(hAD, 3, channel_3_gain));
+   CHECKERROR(olDaSetGainListEntry(*hAD, 0, channel_0_gain));
+   CHECKERROR(olDaSetGainListEntry(*hAD, 1, channel_1_gain));
+   CHECKERROR(olDaSetGainListEntry(*hAD, 2, channel_2_gain));
+   CHECKERROR(olDaSetGainListEntry(*hAD, 3, channel_2_gain));
 #endif
-   /* Set the clock and frequency for data acquisition*/
-   CHECKERROR(olDaSetTrigger(hAD, OL_TRG_SOFT));
-   CHECKERROR(olDaSetClockSource(hAD, OL_CLK_INTERNAL));
-   CHECKERROR(olDaSetClockFrequency(hAD, clk_freq));
-   CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_NONE));
-   // CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_MULTIPLE));
 
-   /* Store the config*/
-   CHECKERROR(olDaConfig(hAD));
+   return CFG_SUCCESS;
+}
+
+int config_data_input(HDASS *hAD, int clk_freq, HBUF hBufs[])
+{
+   /* Set the clock and frequency for data acquisition*/
+   CHECKERROR(olDaSetTrigger(*hAD, OL_TRG_SOFT));
+   CHECKERROR(olDaSetClockSource(*hAD, OL_CLK_INTERNAL));
+   CHECKERROR(olDaSetClockFrequency(*hAD, clk_freq));
+   CHECKERROR(olDaSetWrapMode(*hAD, OL_WRP_NONE));
 
    /* Allocating memory for data buffers*/
-   HBUF hBufs[NUM_OL_BUFFERS];
    for (int i = 0; i < NUM_OL_BUFFERS; i++)
    {
-      // if (OLSUCCESS != olDmAllocBuffer(GHND, (int)clk_freq, &hBufs[i]))
       if (OLSUCCESS != olDmCallocBuffer(GHND, 0, (int)clk_freq, 2, &hBufs[i]))
       {
          for (i--; i >= 0; i--)
          {
             olDmFreeBuffer(hBufs[i]);
          }
-         exit(1);
+         return CFG_FAILURE;
       }
-      olDaPutBuffer(hAD, hBufs[i]);
+      olDaPutBuffer(*hAD, hBufs[i]);
    }
 
+   return CFG_SUCCESS;
+}
+
+int measure_indefinite(HWND *hWnd, HDASS *hAD)
+{
    /* Start acquisition*/
-   if (OLSUCCESS != (olDaStart(hAD)))
+   if (OLSUCCESS != (olDaStart(*hAD)))
    {
       printf("A/D Operation Start Failed...hit any key to terminate.\n");
    }
@@ -425,7 +431,7 @@ void measure(bool use_default_values, int num_channels, float clk_freq, int all_
    // for keyboard input.
    //
    while (GetMessage(&msg, // message structure
-                     hWnd, // handle of window receiving the message
+                     *hWnd, // handle of window receiving the message
                      0,    // lowest message to examine
                      0))   // highest message to examine
    {
@@ -438,20 +444,70 @@ void measure(bool use_default_values, int num_channels, float clk_freq, int all_
       }
    }
 
+   return CFG_SUCCESS;
+}
+
+int measure_interval()
+{
+   return CFG_SUCCESS;
+}
+
+int deinitialize(HDEV *hDev, HDASS *hAD, HBUF hBufs[])
+{
    // abort A/D operation
    olDaAbort(hAD);
    printf("\nA/D Operation Terminated \n");
 
-   for (i = 0; i < NUM_OL_BUFFERS; i++)
+   for (int i = 0; i < NUM_OL_BUFFERS; i++)
    {
       olDmFreeBuffer(hBufs[i]);
    }
 
    olDaTerminate(hDev);
-   exit(0);
+   return CFG_SUCCESS;
 }
+
+int measure(bool use_default_values, int num_channels, float clk_freq, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
+{
+   if (use_default_values)
+   {
+      num_channels = NUM_CHANNELS;
+      all_channel_gain = ALL_CHANNEL_GAIN;
+      channel_0_gain = CHANNEL_GAIN_0;
+      channel_1_gain = CHANNEL_GAIN_1;
+      channel_2_gain = CHANNEL_GAIN_2;
+      channel_3_gain = CHANNEL_GAIN_3;
+      clk_freq = CLOCK_FREQUENCY;
+   }
+
+   int i = 0;
+   printf("Open Layers Continuous A/D Win32 Console Example\n");
+
+   HWND hWnd;
+   HDEV hDev = NULL;
+   HDASS hAD = NULL;
+   HBUF hBufs[NUM_OL_BUFFERS];
+
+   if(config_board_input(&hWnd, &hDev, &hAD) == CFG_FAILURE) 
+      return ERR_BOARD_CONFIG;
+   if(config_channels_input(&hAD,num_channels,all_channel_gain,channel_0_gain,channel_1_gain,channel_2_gain,channel_3_gain) == CFG_FAILURE) 
+      return ERR_CHANNEL_CONFIG;
+   if(config_data_input(&hAD, clk_freq,hBufs) == CFG_FAILURE) 
+      return ERR_DATA_CONFIG;
+
+   /* Store the config*/
+   CHECKERROR(olDaConfig(hAD));
+
+   if(measure_indefinite(&hWnd, &hAD) == CFG_FAILURE) 
+      return ERR_MEASUREMENT;
+   if(deinitialize(&hDev,&hAD,hBufs) == CFG_FAILURE) 
+      return ERR_DEINIT_CONFIG;
+
+   return CFG_SUCCESS;
+}
+
 /* This function generates a simple squarewave at the specified amplitude, frequency and duration (in s) */
-void generate(bool use_default_values, bool read_input, float clk_freq, int all_channel_gain, int amplitude, int wave_freq, int duration)
+int generate(bool use_default_values, bool read_input, float clk_freq, int all_channel_gain, int amplitude, int wave_freq, int duration)
 {
    if (use_default_values)
    {
@@ -690,5 +746,7 @@ void generate(bool use_default_values, bool read_input, float clk_freq, int all_
 
    CHECKERROR(olDaReleaseDASS(hDA));
    CHECKERROR(olDaTerminate(hDev));
-   exit(0);
+
+   return CFG_SUCCESS;
+   // exit(0);
 }
