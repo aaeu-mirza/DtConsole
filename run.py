@@ -16,11 +16,13 @@ WAVEFORM_FREQUENCY = 10  # in hertz (Hz) [10Hz-400Hz]
 WAVEFORM_DURATION = 10  # in seconds (s)
 
 # Error Codes
-ERR_BOARD_CONFIG = 1
-ERR_CHANNEL_CONFIG = 2
-ERR_DATA_CONFIG = 3
-ERR_MEASUREMENT = 4
-ERR_DEINIT_CONFIG = 5
+ERR_CFG_FAILURE = -1
+ERR_INIT_CONFIG = 1
+ERR_BOARD_CONFIG = 2
+ERR_CHANNEL_CONFIG = 3
+ERR_DATA_CONFIG = 4
+ERR_MEASUREMENT = 5
+ERR_DEINIT_CONFIG = 6
 
 
 class DT9837():
@@ -30,7 +32,25 @@ class DT9837():
         self.dt_lib = ctypes.CDLL(
             "C:\_Automation\Win32\SDK\Examples\DtConsole\dt_lib.so")
 
-    def measure_acceleration(self, use_default_vals=True):
+    def connect(self):
+        """Connect to the device."""
+        err_str = ""
+        self.init = self.dt_lib.initialize_board
+        err_code = self.init()
+        if err_code != 0:
+            err_str = "ERROR_INIT_CONFIG_FAILURE"
+            print(f"Error Occured: {err_code}_{err_str}")
+
+    def disconnect(self):
+        """Disconnect the device"""
+        err_str = ""
+        self.deinit = self.dt_lib.deinit_board
+        err_code = self.deinit()
+        if err_code != 0:
+            err_str = "ERROR_DEINIT_CONFIG_FAILURE"
+            print(f"Error Occured: {err_code}_{err_str}")
+
+    def measure_acceleration(self, duration, timer_enabled=True, use_default_vals=True):
         """This function measures the acceleration reading
 
         A 3 axis accelerometer must be connected to the equipment that 
@@ -41,9 +61,10 @@ class DT9837():
         """
         self.measure = self.dt_lib.measure
         self.measure.argtypes = [ctypes.c_bool, ctypes.c_int, ctypes.c_float,
-                                 ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                                 ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_bool, ctypes.c_int]
+        self.measure.restype = ctypes.c_int
         err_code = self.measure(use_default_vals, NUM_CHANNELS,
-                                CLOCK_FREQUENCY, ALL_CHANNEL_GAIN, CHANNEL_GAIN_0, CHANNEL_GAIN_1, CHANNEL_GAIN_2, CHANNEL_GAIN_3)
+                                CLOCK_FREQUENCY, ALL_CHANNEL_GAIN, CHANNEL_GAIN_0, CHANNEL_GAIN_1, CHANNEL_GAIN_2, CHANNEL_GAIN_3, timer_enabled, duration)
         self._error_check(err_code)
 
     def generate_squarewave(self, use_default_vals=True, read_input=True):
@@ -65,23 +86,31 @@ class DT9837():
         self._error_check(err_code)
 
     def _error_check(self, err_code):
-        if err_code == ERR_BOARD_CONFIG:
-            err_str = "ERR_BOARD_CONFIG"
-        if err_code == ERR_CHANNEL_CONFIG:
-            err_str = "ERR_CHANNEL_CONFIG"
-        if err_code == ERR_DATA_CONFIG:
-            err_str = "ERR_DATA_CONFIG"
-        if err_code == ERR_MEASUREMENT:
-            err_str = "ERR_MEASUREMENT"
-        if err_code == ERR_DEINIT_CONFIG:
-            err_str = "ERR_DEINIT_CONFIG"
-        print(f"Error Occured: {err_code}_{err_str}")
+        err_str = ""
+        if err_code != 0:
+            if err_code == ERR_CFG_FAILURE:
+                err_str = "ERROR_MISC_FAILURE"
+            if err_code == ERR_INIT_CONFIG:
+                err_str = "ERROR_INIT_CONFIG_FAILURE"
+            if err_code == ERR_BOARD_CONFIG:
+                err_str = "ERROR_BOARD_CONFIG_FAILURE"
+            if err_code == ERR_CHANNEL_CONFIG:
+                err_str = "ERROR_CHANNEL_CONFIG_FAILURE"
+            if err_code == ERR_DATA_CONFIG:
+                err_str = "ERROR_DATA_CONFIG_FAILURE"
+            if err_code == ERR_MEASUREMENT:
+                err_str = "ERROR_MEASUREMENT_FAILURE"
+            if err_code == ERR_DEINIT_CONFIG:
+                err_str = "ERROR_DEINIT_CONFIG_FAILURE"
+            print(f"Error Occured: {err_code}_{err_str}")
 
 
 if __name__ == "__main__":
     signalanalyzer = DT9837()
 
-    signalanalyzer.measure_acceleration()
+    signalanalyzer.connect()
+    signalanalyzer.measure_acceleration(10, timer_enabled=True)
+    # signalanalyzer.measure_acceleration(10, timer_enabled=False)
+    signalanalyzer.disconnect()
     # signalanalyzer.measure_acceleration(use_default_vals=False)
     # signalanalyzer.generate_squarewave(use_default_vals=False, read_input=True)
-    # signalanalyzer.test()

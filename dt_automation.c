@@ -42,11 +42,12 @@ PURPOSE:
 #define CFG_SUCCESS 0
 #define CFG_FAILURE -1
 
-#define ERR_BOARD_CONFIG 1
-#define ERR_CHANNEL_CONFIG 2
-#define ERR_DATA_CONFIG 3
-#define ERR_MEASUREMENT 4
-#define ERR_DEINIT_CONFIG 5
+#define ERR_INIT_CONFIG 1
+#define ERR_BOARD_CONFIG 2
+#define ERR_CHANNEL_CONFIG 3
+#define ERR_DATA_CONFIG 4
+#define ERR_MEASUREMENT 5
+#define ERR_DEINIT_CONFIG 6
 
 #define CHECKERROR(ecode)                           \
    do                                               \
@@ -71,7 +72,7 @@ BOOL tfileopen = 0;
 DBL textfile_time = 0;
 ULNG glist_resume = 0;
 
-BOOL save_data(HDASS hAD, HBUF hBuf)
+BOOL save_data(HDASS hAD_v, HBUF hBuf_v)
 {
    /*
       This function writes the specified buffer to the volts output file:
@@ -101,19 +102,19 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
 
    /* get sub system information for code/volts conversion */
 
-   status = olDaGetRange(hAD, &max, &min);
+   status = olDaGetRange(hAD_v, &max, &min);
    if (status == OLNOERROR)
-      status = olDaGetEncoding(hAD, &encoding);
+      status = olDaGetEncoding(hAD_v, &encoding);
    if (status == OLNOERROR)
-      status = olDaGetResolution(hAD, &resolution);
+      status = olDaGetResolution(hAD_v, &resolution);
    if (status == OLNOERROR)
-      status = olDmGetValidSamples(hBuf, &samples);
+      status = olDmGetValidSamples(hBuf_v, &samples);
    if (status == OLNOERROR)
-      status = olDmGetDataWidth(hBuf, &size);
+      status = olDmGetDataWidth(hBuf_v, &size);
    if (status == OLNOERROR)
-      olDaGetClockFrequency(hAD, &freq);
+      olDaGetClockFrequency(hAD_v, &freq);
    if (status == OLNOERROR)
-      status = olDaGetChannelListSize(hAD, &listsize);
+      status = olDaGetChannelListSize(hAD_v, &listsize);
    if (status != OLNOERROR)
    {
       olDaGetErrorString(status, lpstr, strlen);
@@ -122,7 +123,7 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
 
    for (j = 0; j < listsize; j++)
    {
-      olDaGetGainListEntry(hAD, j, &currentglistentry);
+      olDaGetGainListEntry(hAD_v, j, &currentglistentry);
       gainlist[j] = currentglistentry;
    }
 
@@ -141,7 +142,7 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
       fprintf(stream, "Time,accel(x),accel(y),accel(z),dac\n");
    }
    /* get pointer to the buffer */
-   CHECKERROR(olDmGetBufferPtr(hBuf, (LPVOID *)&pBuffer32));
+   CHECKERROR(olDmGetBufferPtr(hBuf_v, (LPVOID *)&pBuffer32));
 
    while (i < samples)
    {
@@ -200,7 +201,7 @@ BOOL save_data(HDASS hAD, HBUF hBuf)
 }
 
 /* UNUSED: can be used to get a single value from 1 channel*/
-void process_data(HDASS hAD, HBUF hBuffer)
+void process_data(HDASS hAD_v, HBUF hBuffer)
 {
    /*
      This function writes the specified buffer record a single voltage
@@ -218,9 +219,9 @@ void process_data(HDASS hAD, HBUF hBuffer)
    {
 
       /* get sub system information for code/volts conversion */
-      olDaGetRange(hAD, &max, &min);
-      olDaGetEncoding(hAD, &encoding);
-      olDaGetResolution(hAD, &resolution);
+      olDaGetRange(hAD_v, &max, &min);
+      olDaGetEncoding(hAD_v, &encoding);
+      olDaGetResolution(hAD_v, &resolution);
 
       /* get max samples in input buffer */
       olDmGetValidSamples(hBuffer, &samples);
@@ -256,7 +257,7 @@ void process_data(HDASS hAD, HBUF hBuffer)
 
 /* This function is a windows api callback for processing the data buffers*/
 LRESULT WINAPI
-WndProc(HWND hWnd, UINT msg, WPARAM hAD, LPARAM lParam)
+WndProc(HWND hWnd_v, UINT msg, WPARAM hAD_v, LPARAM lParam)
 {
    switch (msg)
    {
@@ -265,12 +266,12 @@ WndProc(HWND hWnd, UINT msg, WPARAM hAD, LPARAM lParam)
       printf("Buffer Done Count: %ld \r", counter);
       HBUF hBuf = NULL;
       counter++;
-      olDaGetBuffer((HDASS)hAD, &hBuf);
+      olDaGetBuffer((HDASS)hAD_v, &hBuf);
       if (hBuf)
       {
-         //   process_data( (HDASS)hAD, hBuf );
-         save_data((HDASS)hAD, hBuf);
-         olDaPutBuffer((HDASS)hAD, hBuf);
+         //   process_data( (HDASS)hAD_v, hBuf );
+         save_data((HDASS)hAD_v, hBuf);
+         olDaPutBuffer((HDASS)hAD_v, hBuf);
       }
    }
    break;
@@ -291,7 +292,7 @@ WndProc(HWND hWnd, UINT msg, WPARAM hAD, LPARAM lParam)
       break;
 
    default:
-      return DefWindowProc(hWnd, msg, hAD, lParam);
+      return DefWindowProc(hWnd_v, msg, hAD_v, lParam);
    }
 
    return 0;
@@ -318,7 +319,13 @@ EnumBrdProc(LPSTR lpszBrdName, LPSTR lpszDriverName, LPARAM lParam)
    printf("%s succesfully initialized.\n", lpszBrdName);
    return FALSE; // all set , board handle in lParam
 }
-int initialize(HWND *hWnd, HDEV *hDev)
+
+static HWND hWnd;
+static HDEV hDev = NULL;
+static HDASS hAD = NULL;
+static HBUF hBufs[NUM_OL_BUFFERS];
+
+int initialize_board()
 {
    // create a window for messages
    WNDCLASS wc;
@@ -327,7 +334,7 @@ int initialize(HWND *hWnd, HDEV *hDev)
    wc.lpszClassName = "DtConsoleClass";
    RegisterClass(&wc);
 
-   *hWnd = CreateWindow(wc.lpszClassName,
+   hWnd = CreateWindow(wc.lpszClassName,
                             NULL,
                             NULL,
                             0, 0, 0, 0,
@@ -339,90 +346,97 @@ int initialize(HWND *hWnd, HDEV *hDev)
    if (!hWnd)
       return CFG_FAILURE;
 
-   CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)hDev));
+   CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)&hDev));
    return CFG_SUCCESS;
 }
 
-int config_board_input(HWND *hWnd, HDEV *hDev, HDASS *hAD)
-{
-   if(initialize(hWnd,hDev) == CFG_FAILURE)
-      return CFG_FAILURE;
-   
-   CHECKERROR(olDaGetDASS(*hDev, OLSS_AD, 0, hAD));
-   CHECKERROR(olDaSetWndHandle(*hAD, *hWnd, 0));
-   CHECKERROR(olDaSetDataFlow(*hAD, OL_DF_CONTINUOUS));
+int config_board_input(HWND *hWnd_p, HDEV *hDev_p, HDASS *hAD_p)
+{  
+   CHECKERROR(olDaGetDASS(*hDev_p, OLSS_AD, 0, hAD_p));
+   CHECKERROR(olDaSetWndHandle(*hAD_p, *hWnd_p, 0));
+   CHECKERROR(olDaSetDataFlow(*hAD_p, OL_DF_CONTINUOUS));
 
    return CFG_SUCCESS;
 }
 
-int config_channels_input(HDASS *hAD, int num_channels, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
+int config_channels_input(HDASS *hAD_p, int num_channels, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
 {
-   CHECKERROR(olDaSetChannelListSize(*hAD, num_channels));
+   CHECKERROR(olDaSetChannelListSize(*hAD_p, num_channels));
    for (int i = 0; i < num_channels; i++)
    {
       /* Set Channel List and index */
-      CHECKERROR(olDaSetChannelListEntry(*hAD, i, i));
+      CHECKERROR(olDaSetChannelListEntry(*hAD_p, i, i));
 
       /* Set Channel Gain Values */
-      CHECKERROR(olDaSetGainListEntry(*hAD, i, all_channel_gain));
+      CHECKERROR(olDaSetGainListEntry(*hAD_p, i, all_channel_gain));
 
       /* Set channels coupling type to AC coupling */
-      CHECKERROR(olDaSetCouplingType(*hAD, i, AC));
+      CHECKERROR(olDaSetCouplingType(*hAD_p, i, AC));
 
       /* Set channels current source to disabled */
-      CHECKERROR(olDaSetExcitationCurrentSource(*hAD, i, INTERNAL));
+      CHECKERROR(olDaSetExcitationCurrentSource(*hAD_p, i, INTERNAL));
    }
 
 #if EN_MULTIPLE_CH_GAIN == 1
    /* Set individual Channel Gain Values */
-   CHECKERROR(olDaSetGainListEntry(*hAD, 0, channel_0_gain));
-   CHECKERROR(olDaSetGainListEntry(*hAD, 1, channel_1_gain));
-   CHECKERROR(olDaSetGainListEntry(*hAD, 2, channel_2_gain));
-   CHECKERROR(olDaSetGainListEntry(*hAD, 3, channel_2_gain));
+   CHECKERROR(olDaSetGainListEntry(*hAD_p, 0, channel_0_gain));
+   CHECKERROR(olDaSetGainListEntry(*hAD_p, 1, channel_1_gain));
+   CHECKERROR(olDaSetGainListEntry(*hAD_p, 2, channel_2_gain));
+   CHECKERROR(olDaSetGainListEntry(*hAD_p, 3, channel_2_gain));
 #endif
 
    return CFG_SUCCESS;
 }
 
-int config_data_input(HDASS *hAD, int clk_freq, HBUF hBufs[])
+int config_data_input(HDASS *hAD_p, int clk_freq, HBUF hBufs_p[])
 {
    /* Set the clock and frequency for data acquisition*/
-   CHECKERROR(olDaSetTrigger(*hAD, OL_TRG_SOFT));
-   CHECKERROR(olDaSetClockSource(*hAD, OL_CLK_INTERNAL));
-   CHECKERROR(olDaSetClockFrequency(*hAD, clk_freq));
-   CHECKERROR(olDaSetWrapMode(*hAD, OL_WRP_NONE));
+   CHECKERROR(olDaSetTrigger(*hAD_p, OL_TRG_SOFT));
+   CHECKERROR(olDaSetClockSource(*hAD_p, OL_CLK_INTERNAL));
+   CHECKERROR(olDaSetClockFrequency(*hAD_p, clk_freq));
+   CHECKERROR(olDaSetWrapMode(*hAD_p, OL_WRP_NONE));
 
    /* Allocating memory for data buffers*/
    for (int i = 0; i < NUM_OL_BUFFERS; i++)
    {
-      if (OLSUCCESS != olDmCallocBuffer(GHND, 0, (int)clk_freq, 2, &hBufs[i]))
+      if (OLSUCCESS != olDmCallocBuffer(GHND, 0, (int)clk_freq, 2, &hBufs_p[i]))
       {
          for (i--; i >= 0; i--)
          {
-            olDmFreeBuffer(hBufs[i]);
+            olDmFreeBuffer(hBufs_p[i]);
          }
          return CFG_FAILURE;
       }
-      olDaPutBuffer(*hAD, hBufs[i]);
+      olDaPutBuffer(*hAD_p, hBufs_p[i]);
    }
 
    return CFG_SUCCESS;
 }
 
-int measure_indefinite(HWND *hWnd, HDASS *hAD)
+int measurement_start(HWND *hWnd_p, HDASS *hAD_p, bool timer_en, int timer_duration)
 {
    /* Start acquisition*/
-   if (OLSUCCESS != (olDaStart(*hAD)))
+   if (OLSUCCESS != (olDaStart(*hAD_p)))
    {
-      printf("A/D Operation Start Failed...hit any key to terminate.\n");
+      printf("A/D Operation Start Failed...\n");
    }
    else
    {
-      printf("A/D Operation Started...hit any key to terminate.\n\n");
-      printf("Buffer Done Count : %ld \r", counter);
+      printf("A/D Operation Started...\n");
+   }
+
+   if(timer_en)
+   {
+      printf("Timer Enabled: for %d seconds...\n\n", timer_duration);
+   }
+   else
+   {
+      printf("Timer Disabled. Hit any key to temrinate...\n\n", timer_duration);
    }
 
    MSG msg;
+   time_t start = time(0);
+   double seconds_since_start = 0;
    SetMessageQueue(50); // Increase the our message queue size so
                         // we don't lose any data acq messages
 
@@ -431,43 +445,56 @@ int measure_indefinite(HWND *hWnd, HDASS *hAD)
    // for keyboard input.
    //
    while (GetMessage(&msg, // message structure
-                     *hWnd, // handle of window receiving the message
+                     *hWnd_p, // handle of window receiving the message
                      0,    // lowest message to examine
                      0))   // highest message to examine
    {
       TranslateMessage(&msg); // Translates virtual key codes
       DispatchMessage(&msg);  // Dispatches message to window
-      if (_kbhit())
+
+      if(timer_en)
       {
-         _getch();
-         PostQuitMessage(0);
+         seconds_since_start = difftime(time(0), start);
+
+         if (seconds_since_start > timer_duration)
+         {
+            PostQuitMessage(0);
+         }
+      }
+      else
+      {
+         if (_kbhit())
+         {
+            _getch();
+            PostQuitMessage(0);
+         }
       }
    }
 
    return CFG_SUCCESS;
 }
 
-int measure_interval()
-{
-   return CFG_SUCCESS;
-}
-
-int deinitialize(HDEV *hDev, HDASS *hAD, HBUF hBufs[])
+int deinitialize_inputs(HDASS *hAD_p, HBUF hBufs_p[])
 {
    // abort A/D operation
-   olDaAbort(hAD);
+   olDaAbort(*hAD_p);
    printf("\nA/D Operation Terminated \n");
 
    for (int i = 0; i < NUM_OL_BUFFERS; i++)
    {
-      olDmFreeBuffer(hBufs[i]);
+      olDmFreeBuffer(hBufs_p[i]);
    }
-
-   olDaTerminate(hDev);
    return CFG_SUCCESS;
 }
 
-int measure(bool use_default_values, int num_channels, float clk_freq, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain)
+int deinit_board()
+{
+   CHECKERROR(olDaReleaseDASS(hAD));
+   CHECKERROR(olDaTerminate(hDev));
+   return CFG_SUCCESS;
+}
+
+int measure(bool use_default_values, int num_channels, float clk_freq, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain, bool timer_en, int timer_duration)
 {
    if (use_default_values)
    {
@@ -481,12 +508,6 @@ int measure(bool use_default_values, int num_channels, float clk_freq, int all_c
    }
 
    int i = 0;
-   printf("Open Layers Continuous A/D Win32 Console Example\n");
-
-   HWND hWnd;
-   HDEV hDev = NULL;
-   HDASS hAD = NULL;
-   HBUF hBufs[NUM_OL_BUFFERS];
 
    if(config_board_input(&hWnd, &hDev, &hAD) == CFG_FAILURE) 
       return ERR_BOARD_CONFIG;
@@ -498,9 +519,9 @@ int measure(bool use_default_values, int num_channels, float clk_freq, int all_c
    /* Store the config*/
    CHECKERROR(olDaConfig(hAD));
 
-   if(measure_indefinite(&hWnd, &hAD) == CFG_FAILURE) 
+   if(measurement_start(&hWnd, &hAD, timer_en, timer_duration) == CFG_FAILURE) 
       return ERR_MEASUREMENT;
-   if(deinitialize(&hDev,&hAD,hBufs) == CFG_FAILURE) 
+   if(deinitialize_inputs(&hAD,hBufs) == CFG_FAILURE) 
       return ERR_DEINIT_CONFIG;
 
    return CFG_SUCCESS;
@@ -524,8 +545,6 @@ int generate(bool use_default_values, bool read_input, float clk_freq, int all_c
    UINT size, peak, dma, i, j;
    UINT wavefreq;
    UINT channel = 0;
-
-   printf("Open Layers Continuous D/A Win32 Console Example\n");
 
    // create a window for messages
    WNDCLASS wc;
