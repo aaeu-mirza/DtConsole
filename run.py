@@ -1,5 +1,5 @@
 # This program imports and runs the compiled data acuqisition C library for DT9837
-import ctypes
+from ctypes import *
 
 # Config Params
 NUM_CHANNELS = 4  # Max 4 channels for DT9837
@@ -22,14 +22,15 @@ ERR_BOARD_CONFIG = 2
 ERR_CHANNEL_CONFIG = 3
 ERR_DATA_CONFIG = 4
 ERR_MEASUREMENT = 5
-ERR_DEINIT_CONFIG = 6
+ERR_OUTPUT = 6
+ERR_DEINIT_CONFIG = 7
 
 
 class DT9837():
     def __init__(self):
         """Equipment class for DT9837 signal analyzer
         """
-        self.dt_lib = ctypes.CDLL(
+        self.dt_lib = CDLL(
             "C:\_Automation\Win32\SDK\Examples\DtConsole\dt_lib.so")
 
     def connect(self):
@@ -60,14 +61,14 @@ class DT9837():
         :type use_default_vals: bool, optional
         """
         self.measure = self.dt_lib.measure
-        self.measure.argtypes = [ctypes.c_bool, ctypes.c_int, ctypes.c_float,
-                                 ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_bool, ctypes.c_int]
-        self.measure.restype = ctypes.c_int
+        self.measure.argtypes = [c_bool, c_int, c_float,
+                                 c_int, c_int, c_int, c_int, c_int, c_bool, c_int]
+        self.measure.restype = c_int
         err_code = self.measure(use_default_vals, NUM_CHANNELS,
                                 CLOCK_FREQUENCY, ALL_CHANNEL_GAIN, CHANNEL_GAIN_0, CHANNEL_GAIN_1, CHANNEL_GAIN_2, CHANNEL_GAIN_3, timer_enabled, duration)
         self._error_check(err_code)
 
-    def generate_squarewave(self, use_default_vals=True, read_input=True):
+    def generate_squarewave(self, duration, timer_enabled=True, use_default_vals=True, read_input=True):
         """This function generates a simple squarewave
 
         Generates a wave at the specified amplitude (V), frequency (Hz) and duration (in s)
@@ -79,10 +80,10 @@ class DT9837():
         """
         self.generate = self.dt_lib.generate
         self.generate.argtypes = [
-            ctypes.c_bool,  ctypes.c_bool, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-        self.generate.restype = ctypes.c_int
-        err_code = self.generate(use_default_vals, read_input, 1000.0, ALL_CHANNEL_GAIN,
-                                 WAVEFORM_AMPLITUDE, WAVEFORM_FREQUENCY, WAVEFORM_DURATION)
+            c_bool,  c_bool, c_float, c_int, c_int, c_int, c_bool, c_int]
+        self.generate.restype = c_int
+        err_code = self.generate(use_default_vals, read_input, CLOCK_FREQUENCY, ALL_CHANNEL_GAIN,
+                                 WAVEFORM_AMPLITUDE, WAVEFORM_FREQUENCY, timer_enabled, duration)
         self._error_check(err_code)
 
     def _error_check(self, err_code):
@@ -100,6 +101,8 @@ class DT9837():
                 err_str = "ERROR_DATA_CONFIG_FAILURE"
             if err_code == ERR_MEASUREMENT:
                 err_str = "ERROR_MEASUREMENT_FAILURE"
+            if err_code == ERR_OUTPUT:
+                err_str = "ERROR_OUTPUT_FAILURE"
             if err_code == ERR_DEINIT_CONFIG:
                 err_str = "ERROR_DEINIT_CONFIG_FAILURE"
             print(f"Error Occured: {err_code}_{err_str}")
@@ -109,8 +112,10 @@ if __name__ == "__main__":
     signalanalyzer = DT9837()
 
     signalanalyzer.connect()
-    signalanalyzer.measure_acceleration(10, timer_enabled=True)
+    # signalanalyzer.measure_acceleration(10, timer_enabled=True)
     # signalanalyzer.measure_acceleration(10, timer_enabled=False)
+    signalanalyzer.generate_squarewave(
+        WAVEFORM_DURATION, use_default_vals=False, read_input=False)
+    signalanalyzer.generate_squarewave(
+        0, timer_enabled=False, use_default_vals=False)
     signalanalyzer.disconnect()
-    # signalanalyzer.measure_acceleration(use_default_vals=False)
-    # signalanalyzer.generate_squarewave(use_default_vals=False, read_input=True)

@@ -1,6 +1,6 @@
 /*-----------------------------------------------------------------------
 
-PROGRAM: dt_automation.cpp
+PROGRAM: dt_automation.c
 
 PURPOSE:
     Open Layers data acquisition modified example implementing
@@ -31,7 +31,7 @@ PURPOSE:
 #define CHANNEL_GAIN_0 1 // Z
 #define CHANNEL_GAIN_1 1 // Y
 #define CHANNEL_GAIN_2 1 // X
-#define CHANNEL_GAIN_3 1 // N/A
+#define CHANNEL_GAIN_3 1 // DAC
 #endif
 
 #define SENSITIVITY_VAL_X 101.3 // mV per g [CALIBRATED: DO NOT CHANGE]
@@ -47,7 +47,8 @@ PURPOSE:
 #define ERR_CHANNEL_CONFIG 3
 #define ERR_DATA_CONFIG 4
 #define ERR_MEASUREMENT 5
-#define ERR_DEINIT_CONFIG 6
+#define ERR_OUTPUT 6
+#define ERR_DEINIT_CONFIG 7
 
 #define CHECKERROR(ecode)                           \
    do                                               \
@@ -323,7 +324,10 @@ EnumBrdProc(LPSTR lpszBrdName, LPSTR lpszDriverName, LPARAM lParam)
 static HWND hWnd;
 static HDEV hDev = NULL;
 static HDASS hAD = NULL;
+static HDASS hDA = NULL;
 static HBUF hBufs[NUM_OL_BUFFERS];
+static HBUF hBuf = NULL;
+static PWORD lpbuf = NULL;
 
 int initialize_board()
 {
@@ -350,11 +354,35 @@ int initialize_board()
    return CFG_SUCCESS;
 }
 
+int config_board_output(HWND *hWnd_p, HDEV *hDev_p, HDASS *hDA_p, UINT *dma, DBL *freq, DBL clk_freq)
+{  
+   CHECKERROR(olDaGetDASS(*hDev_p, OLSS_DA, 0, hDA_p));
+   CHECKERROR(olDaSetWndHandle(*hDA_p, *hWnd_p, (UINT)NULL));
+   CHECKERROR(olDaSetDataFlow(*hDA_p, OL_DF_CONTINUOUS));
+
+   CHECKERROR(olDaGetSSCapsEx(*hDA_p, OLSSCE_MAXTHROUGHPUT, freq));
+   CHECKERROR(olDaGetSSCaps(*hDA_p, OLSSC_NUMDMACHANS, dma));
+
+   *dma = MIN(1, *dma); /* try for one dma channel   */
+   *freq = MIN(*freq, clk_freq);
+
+   return CFG_SUCCESS;
+}
+
 int config_board_input(HWND *hWnd_p, HDEV *hDev_p, HDASS *hAD_p)
 {  
    CHECKERROR(olDaGetDASS(*hDev_p, OLSS_AD, 0, hAD_p));
    CHECKERROR(olDaSetWndHandle(*hAD_p, *hWnd_p, 0));
    CHECKERROR(olDaSetDataFlow(*hAD_p, OL_DF_CONTINUOUS));
+
+   return CFG_SUCCESS;
+}
+
+int config_channels_output(HDASS *hDA_p,int all_channel_gain)
+{
+   CHECKERROR(olDaSetChannelListSize(*hDA_p, 1));
+   CHECKERROR(olDaSetChannelListEntry(*hDA_p, 0, 0));
+   CHECKERROR(olDaSetGainListEntry(*hDA_p, 0, all_channel_gain));
 
    return CFG_SUCCESS;
 }
@@ -388,6 +416,67 @@ int config_channels_input(HDASS *hAD_p, int num_channels, int all_channel_gain, 
    return CFG_SUCCESS;
 }
 
+int config_data_output(HDASS *hDA_p, int dma, int freq, int wave_freq, int amplitude)
+{
+   UINT encoding, resolution, wavefreq, size, peak, minvalue, maxvalue;
+   DBL min_v, max_v;
+   float volts;
+   /* Set the clock and frequency for data acquisition*/
+   CHECKERROR(olDaSetClockFrequency(*hDA_p, freq));
+   CHECKERROR(olDaSetDmaUsage(*hDA_p, dma));
+   CHECKERROR(olDaSetWrapMode(*hDA_p, OL_WRP_SINGLE));
+
+   /* get sub system information for code/volts conversion */
+   CHECKERROR(olDaGetRange(*hDA_p, &max_v, &min_v));
+   CHECKERROR(olDaGetEncoding(*hDA_p, &encoding));
+   CHECKERROR(olDaGetResolution(*hDA_p, &resolution));
+
+   /* convert max full scale to DAC units */
+   volts = amplitude;
+   olDaVoltsToCode(min_v, max_v, 1 /*gain*/, resolution, encoding, volts, &maxvalue);
+
+   /* convert min full scale to DAC units */
+   volts = -(amplitude);
+   olDaVoltsToCode(min_v, max_v, 1 /*gain*/, resolution, encoding, volts, &minvalue);
+
+   /* 100 hz square wave or the best the board can do */
+   wavefreq = wave_freq; // 10Hz - 400Hz
+   size = MAX_BUFFER_SIZE;
+   peak = (size * AVERAGING_CONSTANT) / wavefreq;
+
+   /* allocate the output buffer */
+   CHECKERROR(olDmCallocBuffer(GMEM_FIXED, 0, (ULNG)size, 2, &hBuf));
+   CHECKERROR(olDmGetBufferPtr(hBuf, (LPVOID *)&lpbuf));
+   
+   /* fill the output buffer with a simple square wave */
+   for (int i = 0, j = 0; i < size; i += peak)
+   {
+      while (j < i + (peak / 2))
+         lpbuf[j++] = (UINT)minvalue;
+      while (j < i + peak)
+         lpbuf[j++] = (UINT)maxvalue;
+   }
+
+   /* Test Sin Wave Implementation (DOESNT WORK)*/
+   // double angle = 0;
+   // for (i=0,j=0;i<size;i+=peak)
+   // {
+   //    angle = 2.0 * 3.14159265 * i / size;
+   //    volts = (amplitude * sin(angle));
+   //    olDaVoltsToCode(min,max, 1 /*gain*/, resolution, encoding, volts, &minvalue);
+   //    printf("val:%f %d\n",volts,minvalue);
+   //    lpbuf[i++] = (UINT)minvalue;
+   // }
+
+   /* for DAC's must set the number of valid samples in buffer */
+   CHECKERROR(olDmSetValidSamples(hBuf, size));
+
+   /* Put the buffer to the DAC */
+   CHECKERROR(olDaPutBuffer(*hDA_p, hBuf));
+
+   return CFG_SUCCESS;
+}
+
 int config_data_input(HDASS *hAD_p, int clk_freq, HBUF hBufs_p[])
 {
    /* Set the clock and frequency for data acquisition*/
@@ -412,6 +501,21 @@ int config_data_input(HDASS *hAD_p, int clk_freq, HBUF hBufs_p[])
 
    return CFG_SUCCESS;
 }
+int output_start(HDASS *hAD_p)
+{
+   /* Start acquisition*/
+   if (OLSUCCESS != (olDaStart(hDA)))
+   {
+      printf("D/A Operation Start Failed...\n");
+      return CFG_FAILURE;
+   }
+   else
+   {
+      printf("D/A Operation Started...\n");
+   }
+
+   return CFG_SUCCESS;
+}
 
 int measurement_start(HWND *hWnd_p, HDASS *hAD_p, bool timer_en, int timer_duration)
 {
@@ -419,6 +523,7 @@ int measurement_start(HWND *hWnd_p, HDASS *hAD_p, bool timer_en, int timer_durat
    if (OLSUCCESS != (olDaStart(*hAD_p)))
    {
       printf("A/D Operation Start Failed...\n");
+      return CFG_FAILURE;
    }
    else
    {
@@ -474,6 +579,24 @@ int measurement_start(HWND *hWnd_p, HDASS *hAD_p, bool timer_en, int timer_durat
    return CFG_SUCCESS;
 }
 
+int deinitialize_output(HDASS *hDA_p, HBUF *hBuf_p)
+{
+   // abort D/A operation
+   olDaAbort(*hDA_p);
+   printf("\nD/A Operation Terminated \n");
+
+   /*
+      get the output buffer from the DAC subsystem and
+      free the output buffer
+   */
+   CHECKERROR(olDaGetBuffer(*hDA_p, hBuf_p));
+   CHECKERROR(olDmFreeBuffer(*hBuf_p));
+
+   /* release the subsystem*/
+   CHECKERROR(olDaReleaseDASS(*hDA_p));
+   return CFG_SUCCESS;
+}
+
 int deinitialize_inputs(HDASS *hAD_p, HBUF hBufs_p[])
 {
    // abort A/D operation
@@ -484,12 +607,14 @@ int deinitialize_inputs(HDASS *hAD_p, HBUF hBufs_p[])
    {
       olDmFreeBuffer(hBufs_p[i]);
    }
+   /* release the subsystem*/
+   CHECKERROR(olDaReleaseDASS(*hAD_p));
    return CFG_SUCCESS;
 }
 
 int deinit_board()
 {
-   CHECKERROR(olDaReleaseDASS(hAD));
+   /* release the board */
    CHECKERROR(olDaTerminate(hDev));
    return CFG_SUCCESS;
 }
@@ -528,7 +653,7 @@ int measure(bool use_default_values, int num_channels, float clk_freq, int all_c
 }
 
 /* This function generates a simple squarewave at the specified amplitude, frequency and duration (in s) */
-int generate(bool use_default_values, bool read_input, float clk_freq, int all_channel_gain, int amplitude, int wave_freq, int duration)
+int generate(bool use_default_values, bool read_input, float clk_freq, int all_channel_gain, int amplitude, int wave_freq,  bool timer_en, int timer_duration)
 {
    if (use_default_values)
    {
@@ -538,234 +663,53 @@ int generate(bool use_default_values, bool read_input, float clk_freq, int all_c
       amplitude = DEFAULT_WAV_AMPLITUDE;
    }
 
-   DBL min, max, freq;
-   float volts;
-   long minvalue, maxvalue;
-   UINT encoding, resolution;
-   UINT size, peak, dma, i, j;
-   UINT wavefreq;
-   UINT channel = 0;
+   DBL freq;
+   UINT dma;
 
-   // create a window for messages
-   WNDCLASS wc;
-   memset(&wc, 0, sizeof(wc));
-   wc.lpfnWndProc = WndProc;
-   wc.lpszClassName = "DtConsoleClass";
-   RegisterClass(&wc);
-
-   HWND hWnd = CreateWindow(wc.lpszClassName,
-                            NULL,
-                            NULL,
-                            0, 0, 0, 0,
-                            NULL,
-                            NULL,
-                            NULL,
-                            NULL);
-
-   if (!hWnd)
-      exit(1);
-
-   /* Configuring the board*/
-   HDEV hDev = NULL;
-   HDASS hDA = NULL;
-   HDASS hAD = NULL;
-   HBUF hBuf = NULL;
-   HBUF hBufs[NUM_OL_BUFFERS];
-   PWORD lpbuf = NULL;
-
-   CHECKERROR(olDaEnumBoards(EnumBrdProc, (LPARAM)&hDev));
-
-   CHECKERROR(olDaGetDASS(hDev, OLSS_DA, 0, &hDA));
-   CHECKERROR(olDaGetSSCapsEx(hDA, OLSSCE_MAXTHROUGHPUT, &freq));
-   CHECKERROR(olDaGetSSCaps(hDA, OLSSC_NUMDMACHANS, &dma));
-
-   dma = MIN(1, dma); /* try for one dma channel   */
-   freq = clk_freq;
-
-   CHECKERROR(olDaSetWndHandle(hDA, hWnd, (UINT)NULL));
-   CHECKERROR(olDaSetDataFlow(hDA, OL_DF_CONTINUOUS));
-
-   CHECKERROR(olDaSetChannelListSize(hDA, 1));
-   CHECKERROR(olDaSetChannelListEntry(hDA, 0, 0));
-   CHECKERROR(olDaSetGainListEntry(hDA, 0, all_channel_gain));
-
-   /* Set the clock and frequency for data acquisition*/
-   CHECKERROR(olDaSetClockFrequency(hDA, freq));
-   CHECKERROR(olDaSetDmaUsage(hDA, dma));
-   CHECKERROR(olDaSetWrapMode(hDA, OL_WRP_SINGLE));
+   if(config_board_output(&hWnd, &hDev, &hDA, &dma, &freq, clk_freq) == CFG_FAILURE) 
+      return ERR_BOARD_CONFIG;
+   if(config_channels_output(&hDA,all_channel_gain) == CFG_FAILURE) 
+      return ERR_CHANNEL_CONFIG;
+   if(config_data_output(&hDA, dma, freq, wave_freq, amplitude) == CFG_FAILURE) 
+      return ERR_DATA_CONFIG;
 
    /* Store the config*/
    CHECKERROR(olDaConfig(hDA));
 
    if (read_input)
    {
-      CHECKERROR(olDaGetDASS(hDev, OLSS_AD, 0, &hAD));
-      CHECKERROR(olDaSetWndHandle(hAD, hWnd, 0));
-      CHECKERROR(olDaSetDataFlow(hAD, OL_DF_CONTINUOUS));
-      CHECKERROR(olDaSetChannelListSize(hAD, 4));
-      CHECKERROR(olDaSetChannelListEntry(hAD, 0, 0));
-      CHECKERROR(olDaSetChannelListEntry(hAD, 1, 1));
-      CHECKERROR(olDaSetChannelListEntry(hAD, 2, 2));
-      CHECKERROR(olDaSetChannelListEntry(hAD, 3, 3));
-      CHECKERROR(olDaSetCouplingType(hAD, 3, AC));
-      CHECKERROR(olDaSetExcitationCurrentSource(hAD, 3, INTERNAL));
-      CHECKERROR(olDaSetClockFrequency(hAD, 1000));
-      CHECKERROR(olDaSetWrapMode(hAD, OL_WRP_NONE));
-      CHECKERROR(olDaSetTrigger(hAD, OL_TRG_SOFT));
-      CHECKERROR(olDaSetClockSource(hAD, OL_CLK_INTERNAL));
+      if(config_board_input(&hWnd, &hDev, &hAD) == CFG_FAILURE) 
+         return ERR_BOARD_CONFIG;
+      if(config_channels_input(&hAD,NUM_CHANNELS,all_channel_gain,all_channel_gain,all_channel_gain,all_channel_gain,all_channel_gain) == CFG_FAILURE) 
+         return ERR_CHANNEL_CONFIG;
+      if(config_data_input(&hAD, clk_freq,hBufs) == CFG_FAILURE) 
+         return ERR_DATA_CONFIG;
+
+      /* Store the config*/
       CHECKERROR(olDaConfig(hAD));
    }
 
-   /* get sub system information for code/volts conversion */
-   CHECKERROR(olDaGetRange(hDA, &max, &min));
-   CHECKERROR(olDaGetEncoding(hDA, &encoding));
-   CHECKERROR(olDaGetResolution(hDA, &resolution));
-
-   /* convert max full scale to DAC units */
-   volts = amplitude;
-   olDaVoltsToCode(min, max, 1 /*gain*/, resolution, encoding, volts, &maxvalue);
-
-   /* convert min full scale to DAC units */
-   volts = -(amplitude);
-   olDaVoltsToCode(min, max, 1 /*gain*/, resolution, encoding, volts, &minvalue);
-
-   /* 100 hz square wave or the best the board can do */
-   wavefreq = wave_freq; // 10Hz - 400Hz
-   size = MAX_BUFFER_SIZE;
-   peak = (size * AVERAGING_CONSTANT) / wavefreq;
-
-   /* allocate the output buffer */
-   CHECKERROR(olDmCallocBuffer(GMEM_FIXED, 0, (ULNG)size, 2, &hBuf));
-   CHECKERROR(olDmGetBufferPtr(hBuf, (LPVOID *)&lpbuf));
-
-   double angle = 0;
-   /* fill the output buffer with a simple square wave */
-   for (i = 0, j = 0; i < size; i += peak)
-   {
-      while (j < i + (peak / 2))
-         lpbuf[j++] = (UINT)minvalue;
-      while (j < i + peak)
-         lpbuf[j++] = (UINT)maxvalue;
-   }
-
-   /* Test Sin Wave Implementation (DOESNT WORK)*/
-   // for (i=0,j=0;i<size;i+=peak)
-   // {
-   //    angle = 2.0 * 3.14159265 * i / size;
-   //    volts = (amplitude * sin(angle));
-   //    olDaVoltsToCode(min,max, 1 /*gain*/, resolution, encoding, volts, &minvalue);
-   //    printf("val:%f %d\n",volts,minvalue);
-   //    lpbuf[i++] = (UINT)minvalue;
-   // }
-
-   /* for DAC's must set the number of valid samples in buffer */
-   CHECKERROR(olDmSetValidSamples(hBuf, size));
-
-   /* Put the buffer to the DAC */
-   CHECKERROR(olDaPutBuffer(hDA, hBuf));
+   if(output_start(&hAD) == CFG_FAILURE) 
+      return ERR_OUTPUT;
 
    if (read_input)
    {
-      /* Allocating memory for data buffers*/
-      for (int i = 0; i < NUM_OL_BUFFERS; i++)
-      {
-         if (OLSUCCESS != olDmCallocBuffer(GHND, 0, (int)clk_freq, 2, &hBufs[i]))
-         {
-            for (i--; i >= 0; i--)
-            {
-               olDmFreeBuffer(hBufs[i]);
-            }
-            exit(1);
-         }
-         olDaPutBuffer(hAD, hBufs[i]);
-      }
-   }
-
-   /* Start acquisition*/
-   if (OLSUCCESS != (olDaStart(hDA)))
-   {
-      printf("D/A Operation Start Failed...hit any key to terminate.\n");
+      if(measurement_start(&hWnd, &hAD, timer_en, timer_duration) == CFG_FAILURE) 
+         return ERR_MEASUREMENT;
    }
    else
    {
-      printf("D/A Operation Started...hit any key to terminate.\n\n");
+      printf("\nSending output for %d seconds \n", timer_duration);
+      Sleep(timer_duration * 1000);
    }
 
-   printf("\nAquiring Data for %d seconds \n", duration);
+   if(deinitialize_output(&hDA,hBuf) == CFG_FAILURE) 
+      return ERR_DEINIT_CONFIG;
    if (read_input)
    {
-      /* Start acquisition*/
-      if (OLSUCCESS != (olDaStart(hAD)))
-      {
-         printf("A/D Operation Start Failed...hit any key to terminate.\n");
-      }
-      else
-      {
-         printf("A/D Operation Started...hit any key to terminate.\n\n");
-      }
-
-      MSG msg;
-      time_t start = time(0);
-      double seconds_since_start = 0;
-      SetMessageQueue(50); // Increase the our message queue size so
-                           // we don't lose any data acq messages
-
-      // Acquire and dispatch messages until a key is hit...since we are a console app
-      // we are using a mix of Windows messages for data acquistion and console approaches
-      // for keyboard input.
-      //
-      while (GetMessage(&msg, // message structure
-                        hWnd, // handle of window receiving the message
-                        0,    // lowest message to examine
-                        0))   // highest message to examine
-      {
-         TranslateMessage(&msg); // Translates virtual key codes
-         DispatchMessage(&msg);  // Dispatches message to window
-         seconds_since_start = difftime(time(0), start);
-
-         if (seconds_since_start > duration)
-         {
-            PostQuitMessage(0);
-         }
-
-         /* Keyboard stop implementation*/
-         // if (_kbhit())
-         // {
-         //    _getch();
-         //    PostQuitMessage(0);
-         // }
-      }
+      if(deinitialize_inputs(&hAD,hBufs) == CFG_FAILURE) 
+         return ERR_DEINIT_CONFIG;
    }
-   else
-   {
-      Sleep(duration * 1000);
-   }
-
-   /*
-      get the output buffer from the DAC subsystem and
-      free the output buffer
-   */
-   olDaAbort(hDA);
-   if (read_input)
-   {
-      // abort A/D operation
-      olDaAbort(hAD);
-      printf("\nA/D Operation Terminated \n");
-
-      for (i = 0; i < NUM_OL_BUFFERS; i++)
-      {
-         olDmFreeBuffer(hBufs[i]);
-      }
-      CHECKERROR(olDaReleaseDASS(hAD));
-   }
-   CHECKERROR(olDaGetBuffer(hDA, &hBuf));
-   CHECKERROR(olDmFreeBuffer(hBuf));
-
-   /* release the subsystem and the board */
-
-   CHECKERROR(olDaReleaseDASS(hDA));
-   CHECKERROR(olDaTerminate(hDev));
 
    return CFG_SUCCESS;
-   // exit(0);
 }
