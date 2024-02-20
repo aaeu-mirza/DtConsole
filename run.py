@@ -25,6 +25,17 @@ ERR_MEASUREMENT = 5
 ERR_OUTPUT = 6
 ERR_DEINIT_CONFIG = 7
 
+# [TODO]:
+
+
+class ChannelData(Structure):
+    _fields_ = [
+        ("channel", (POINTER(c_double)) * NUM_CHANNELS),
+        ("time_ms", POINTER(c_double)),
+        ("num_readings", c_int),
+        ("max_readings", c_int)
+    ]
+
 
 class DT9837():
     def __init__(self):
@@ -61,12 +72,40 @@ class DT9837():
         :type use_default_vals: bool, optional
         """
         self.measure = self.dt_lib.measure
+        self.get_data = self.dt_lib.get_channel_data
+        self.cleanup_data = self.dt_lib.cleanup_data
         self.measure.argtypes = [c_bool, c_int, c_float,
                                  c_int, c_int, c_int, c_int, c_int, c_bool, c_int]
+
         self.measure.restype = c_int
+        self.get_data.restype = ChannelData
+
         err_code = self.measure(use_default_vals, NUM_CHANNELS,
                                 CLOCK_FREQUENCY, ALL_CHANNEL_GAIN, CHANNEL_GAIN_0, CHANNEL_GAIN_1, CHANNEL_GAIN_2, CHANNEL_GAIN_3, timer_enabled, duration)
         self._error_check(err_code)
+
+        data_struct = self.get_data()
+        channels = [[round(data_struct.channel[i][j], 3)
+                     for j in range(data_struct.num_readings)] for i in range(4)]
+        time_ms = [round(data_struct.time_ms[i], 3)
+                   for i in range(data_struct.num_readings)]
+
+        # Print the data
+        print("Number of readings:", data_struct.num_readings)
+        print("Max number of readings:", data_struct.max_readings)
+        print("Time(ms),accel_x(g),accel_y(g),accel_z(g)\n")
+        print(
+            f"{time_ms[0]},{channels[0][0]},{channels[1][0]},{channels[2][0]},{channels[3][0]}\n")
+        print(
+            f"{time_ms[1]},{channels[0][1]},{channels[1][1]},{channels[2][1]},{channels[3][1]}")
+        print(
+            f"{time_ms[2]},{channels[0][2]},{channels[1][2]},{channels[2][2]},{channels[3][2]}")
+        print(
+            f"{time_ms[3]},{channels[0][3]},{channels[1][3]},{channels[2][3]},{channels[3][3]}")
+        print(
+            f"{time_ms[4]},{channels[0][4]},{channels[1][4]},{channels[2][4]},{channels[3][4]}")
+
+        self.cleanup_data()
 
     def generate_squarewave(self, duration, timer_enabled=True, use_default_vals=True, read_input=True):
         """This function generates a simple squarewave
@@ -112,10 +151,10 @@ if __name__ == "__main__":
     signalanalyzer = DT9837()
 
     signalanalyzer.connect()
-    # signalanalyzer.measure_acceleration(10, timer_enabled=True)
+    signalanalyzer.measure_acceleration(1, timer_enabled=True)
     # signalanalyzer.measure_acceleration(10, timer_enabled=False)
-    signalanalyzer.generate_squarewave(
-        WAVEFORM_DURATION, use_default_vals=False, read_input=False)
-    signalanalyzer.generate_squarewave(
-        0, timer_enabled=False, use_default_vals=False)
+    # signalanalyzer.generate_squarewave(
+    #     WAVEFORM_DURATION, use_default_vals=False, read_input=False)
+    # signalanalyzer.generate_squarewave(
+    #     0, timer_enabled=False, use_default_vals=False)
     signalanalyzer.disconnect()

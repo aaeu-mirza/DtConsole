@@ -73,6 +73,49 @@ BOOL tfileopen = 0;
 DBL textfile_time = 0;
 ULNG glist_resume = 0;
 
+typedef struct {
+   DBL *channel[NUM_CHANNELS];
+   DBL *time_ms;
+   UINT num_readings;
+   UINT max_readings;
+} ChannelData;
+
+static volatile ChannelData measure_channels = {0};
+
+int allocate_data_memory(ChannelData *channels, int duration) 
+{
+   UINT max_readings = (duration * 1000) * 2;
+   channels->max_readings = max_readings; // Allocate double the required data size
+   channels->num_readings = 0;
+   channels->time_ms = malloc(max_readings * sizeof(DBL));
+   for (int i = 0; i < NUM_CHANNELS; i++) 
+   {
+      channels->channel[i] = malloc(max_readings * sizeof(DBL));
+   }
+   return CFG_SUCCESS;
+}
+
+void cleanup_data() 
+{
+   free(measure_channels.time_ms);
+   for (int i = 0; i < NUM_CHANNELS; i++) {
+      free(measure_channels.channel[i]);
+   }
+}
+
+void add_reading(ChannelData *channels, DBL time_ms, DBL ch0, DBL ch1, DBL ch2, DBL ch3) {
+   if (channels->num_readings < channels->max_readings) {
+      channels->time_ms[channels->num_readings] = time_ms;
+      channels->channel[0][channels->num_readings] = ch0;
+      channels->channel[1][channels->num_readings] = ch1;
+      channels->channel[2][channels->num_readings] = ch2;
+      channels->channel[3][channels->num_readings] = ch3;
+      channels->num_readings++;
+   } else {
+      printf("Error: Maximum number of readings exceeded.\n");
+   }
+}
+
 BOOL save_data(HDASS hAD_v, HBUF hBuf_v)
 {
    /*
@@ -184,6 +227,7 @@ BOOL save_data(HDASS hAD_v, HBUF hBuf_v)
 
       // Print voltage values to file
       fprintf(stream, "%.3f,%f,%f,%f,%f\n", textfile_time, accel_x, accel_y, accel_z, voltage);
+      add_reading(&measure_channels, textfile_time, accel_x, accel_y, accel_z, voltage);
 
       textfile_time += (1 / freq);
       // i++;
@@ -556,7 +600,6 @@ int measurement_start(HWND *hWnd_p, HDASS *hAD_p, bool timer_en, int timer_durat
    {
       TranslateMessage(&msg); // Translates virtual key codes
       DispatchMessage(&msg);  // Dispatches message to window
-
       if(timer_en)
       {
          seconds_since_start = difftime(time(0), start);
@@ -619,6 +662,11 @@ int deinit_board()
    return CFG_SUCCESS;
 }
 
+ChannelData get_channel_data()
+{
+   return measure_channels;
+}
+
 int measure(bool use_default_values, int num_channels, float clk_freq, int all_channel_gain, int channel_0_gain, int channel_1_gain, int channel_2_gain, int channel_3_gain, bool timer_en, int timer_duration)
 {
    if (use_default_values)
@@ -643,6 +691,8 @@ int measure(bool use_default_values, int num_channels, float clk_freq, int all_c
 
    /* Store the config*/
    CHECKERROR(olDaConfig(hAD));
+
+   allocate_data_memory(&measure_channels, timer_duration);
 
    if(measurement_start(&hWnd, &hAD, timer_en, timer_duration) == CFG_FAILURE) 
       return ERR_MEASUREMENT;
