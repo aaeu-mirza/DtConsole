@@ -27,7 +27,7 @@ PURPOSE:
 
 #define EN_MULTIPLE_CH_GAIN 1 //(1-ON,0-OFF)
 
-#if EN_MULTIPLE_CH_GAIN == 1
+#if EN_MULTIPLE_CH_GAIN
 #define CHANNEL_GAIN_0 1 // Z
 #define CHANNEL_GAIN_1 1 // Y
 #define CHANNEL_GAIN_2 1 // X
@@ -50,13 +50,24 @@ PURPOSE:
 #define ERR_OUTPUT 6
 #define ERR_DEINIT_CONFIG 7
 
+#define LOGGING_EN 0
+#if LOGGING_EN
+#define LOG_PRINT(format, ...)        \
+   do {                               \
+      printf("[DEBUG]: ");      \
+      printf(format, ##__VA_ARGS__);  \
+}  while (0)
+#else
+#define LOG_PRINT(format, ...) ((void)0)
+#endif
+
 #define CHECKERROR(ecode)                           \
    do                                               \
    {                                                \
       ECODE olStatus;                               \
       if (OLSUCCESS != (olStatus = (ecode)))        \
       {                                             \
-         printf("OpenLayers Error %d\n", olStatus); \
+         LOG_PRINT("OpenLayers Error %d\n", olStatus); \
          return CFG_FAILURE;                        \
       }                                             \
    } while (0)
@@ -84,6 +95,14 @@ static volatile ChannelData measure_channels = {0};
 
 int allocate_data_memory(ChannelData *channels, int duration) 
 {
+   if(duration <= 0)
+   {
+      duration = 1;
+   }
+   else if (duration > 900)
+   {
+      duration = 900;
+   }
    UINT max_readings = (duration * 1000) * 2;
    channels->max_readings = max_readings; // Allocate double the required data size
    channels->num_readings = 0;
@@ -97,6 +116,7 @@ int allocate_data_memory(ChannelData *channels, int duration)
 
 void cleanup_data() 
 {
+   LOG_PRINT("Freeing allocated memory: %x\n",measure_channels.time_ms);
    free(measure_channels.time_ms);
    for (int i = 0; i < NUM_CHANNELS; i++) {
       free(measure_channels.channel[i]);
@@ -112,7 +132,7 @@ void add_reading(ChannelData *channels, DBL time_ms, DBL ch0, DBL ch1, DBL ch2, 
       channels->channel[3][channels->num_readings] = ch3;
       channels->num_readings++;
    } else {
-      printf("Error: Maximum number of readings exceeded.\n");
+      LOG_PRINT("Error: Maximum number of readings exceeded.\n");
    }
 }
 
@@ -156,7 +176,7 @@ BOOL save_data(HDASS hAD_v, HBUF hBuf_v)
    if (status == OLNOERROR)
       status = olDmGetDataWidth(hBuf_v, &size);
    if (status == OLNOERROR)
-      olDaGetClockFrequency(hAD_v, &freq);
+      status = olDaGetClockFrequency(hAD_v, &freq);
    if (status == OLNOERROR)
       status = olDaGetChannelListSize(hAD_v, &listsize);
    if (status != OLNOERROR)
@@ -176,15 +196,15 @@ BOOL save_data(HDASS hAD_v, HBUF hBuf_v)
 
    // write the data
    rval = TRUE;
-   if (tfileopen)
-      stream = fopen("accel.csv", "a+"); // append to existing file
-   else
-   {
-      stream = fopen("accel.csv", "w"); // open new file
-      tfileopen = 1;
-      textfile_time = 0;
-      fprintf(stream, "Time,accel(x),accel(y),accel(z),dac\n");
-   }
+   // if (tfileopen)
+   //    stream = fopen("accel.csv", "a+"); // append to existing file
+   // else
+   // {
+   //    stream = fopen("accel.csv", "w"); // open new file
+   //    tfileopen = 1;
+   //    textfile_time = 0;
+   //    fprintf(stream, "Time,accel(x),accel(y),accel(z),dac\n");
+   // }
    /* get pointer to the buffer */
    CHECKERROR(olDmGetBufferPtr(hBuf_v, (LPVOID *)&pBuffer32));
 
@@ -226,7 +246,7 @@ BOOL save_data(HDASS hAD_v, HBUF hBuf_v)
       accel_z = volt_z / (SENSITIVITY_VAL_Z / 1000);
 
       // Print voltage values to file
-      fprintf(stream, "%.3f,%f,%f,%f,%f\n", textfile_time, accel_x, accel_y, accel_z, voltage);
+      // fprintf(stream, "%.3f,%f,%f,%f,%f\n", textfile_time, accel_x, accel_y, accel_z, voltage);
       add_reading(&measure_channels, textfile_time, accel_x, accel_y, accel_z, voltage);
 
       textfile_time += (1 / freq);
@@ -239,7 +259,7 @@ BOOL save_data(HDASS hAD_v, HBUF hBuf_v)
    }
    glist_resume = j; // hold current list element position and gain for next buffer
 
-   fclose(stream);
+   // fclose(stream);
    // system( "type volts.txt" );
 
    return rval;
@@ -296,7 +316,7 @@ void process_data(HDASS hAD_v, HBUF hBuffer)
 
       volts = ((float)max - (float)min) / (1L << resolution) * value + (float)min;
       fflush(stdout);
-      printf("%lf\r", volts * 1000);
+      LOG_PRINT("%lf\r", volts * 1000);
    }
 }
 
@@ -308,7 +328,7 @@ WndProc(HWND hWnd_v, UINT msg, WPARAM hAD_v, LPARAM lParam)
    {
    case OLDA_WM_BUFFER_DONE:
    {
-      printf("Buffer Done Count: %ld \r", counter);
+      LOG_PRINT("Buffer Done Count: %ld \r", counter);
       HBUF hBuf = NULL;
       counter++;
       olDaGetBuffer((HDASS)hAD_v, &hBuf);
@@ -322,17 +342,17 @@ WndProc(HWND hWnd_v, UINT msg, WPARAM hAD_v, LPARAM lParam)
    break;
 
    case OLDA_WM_QUEUE_DONE:
-      printf("\nAcquisition stopped, rate too fast for current options.");
+      LOG_PRINT("Error: Acquisition stopped, rate too fast for current options.\n");
       PostQuitMessage(0);
       break;
 
    case OLDA_WM_TRIGGER_ERROR:
-      printf("\nTrigger error: acquisition stopped.");
+      LOG_PRINT("Trigger error: acquisition stopped.\n");
       PostQuitMessage(0);
       break;
 
    case OLDA_WM_OVERRUN_ERROR:
-      printf("\nInput overrun error: acquisition stopped.");
+      LOG_PRINT("Input overrun error: acquisition stopped.\n");
       PostQuitMessage(0);
       break;
 
@@ -361,7 +381,7 @@ EnumBrdProc(LPSTR lpszBrdName, LPSTR lpszDriverName, LPARAM lParam)
       return TRUE; // try again
    }
 
-   printf("%s succesfully initialized.\n", lpszBrdName);
+   LOG_PRINT("%s succesfully initialized.\n", lpszBrdName);
    return FALSE; // all set , board handle in lParam
 }
 
@@ -508,7 +528,7 @@ int config_data_output(HDASS *hDA_p, int dma, int freq, int wave_freq, int ampli
    //    angle = 2.0 * 3.14159265 * i / size;
    //    volts = (amplitude * sin(angle));
    //    olDaVoltsToCode(min,max, 1 /*gain*/, resolution, encoding, volts, &minvalue);
-   //    printf("val:%f %d\n",volts,minvalue);
+   //    LOG_PRINT("val:%f %d\n",volts,minvalue);
    //    lpbuf[i++] = (UINT)minvalue;
    // }
 
@@ -550,12 +570,12 @@ int output_start(HDASS *hAD_p)
    /* Start acquisition*/
    if (OLSUCCESS != (olDaStart(hDA)))
    {
-      printf("D/A Operation Start Failed...\n");
+      LOG_PRINT("D/A Operation Start Failed...\n");
       return CFG_FAILURE;
    }
    else
    {
-      printf("D/A Operation Started...\n");
+      LOG_PRINT("D/A Operation Started...\n");
    }
 
    return CFG_SUCCESS;
@@ -566,21 +586,21 @@ int measurement_start(HWND *hWnd_p, HDASS *hAD_p, bool timer_en, int timer_durat
    /* Start acquisition*/
    if (OLSUCCESS != (olDaStart(*hAD_p)))
    {
-      printf("A/D Operation Start Failed...\n");
+      LOG_PRINT("A/D Operation Start Failed...\n");
       return CFG_FAILURE;
    }
    else
    {
-      printf("A/D Operation Started...\n");
+      LOG_PRINT("A/D Operation Started...\n");
    }
 
    if(timer_en)
    {
-      printf("Timer Enabled: for %d seconds...\n\n", timer_duration);
+      LOG_PRINT("Timer Enabled: for %d seconds...\n\n", timer_duration);
    }
    else
    {
-      printf("Timer Disabled. Hit any key to temrinate...\n\n", timer_duration);
+      LOG_PRINT("Timer Disabled. Hit any key to temrinate...\n\n", timer_duration);
    }
 
    MSG msg;
@@ -626,7 +646,7 @@ int deinitialize_output(HDASS *hDA_p, HBUF *hBuf_p)
 {
    // abort D/A operation
    olDaAbort(*hDA_p);
-   printf("\nD/A Operation Terminated \n");
+   LOG_PRINT("D/A Operation Terminated \n");
 
    /*
       get the output buffer from the DAC subsystem and
@@ -644,7 +664,7 @@ int deinitialize_inputs(HDASS *hAD_p, HBUF hBufs_p[])
 {
    // abort A/D operation
    olDaAbort(*hAD_p);
-   printf("\nA/D Operation Terminated \n");
+   LOG_PRINT("A/D Operation Terminated \n");
 
    for (int i = 0; i < NUM_OL_BUFFERS; i++)
    {
@@ -680,6 +700,12 @@ int measure(bool use_default_values, int num_channels, float clk_freq, int all_c
       clk_freq = CLOCK_FREQUENCY;
    }
 
+   if(!timer_en)
+   {
+      // Limit to 15 mins
+      timer_duration = 900;
+   }
+
    int i = 0;
 
    if(config_board_input(&hWnd, &hDev, &hAD) == CFG_FAILURE) 
@@ -711,6 +737,11 @@ int generate(bool use_default_values, bool read_input, float clk_freq, int all_c
       clk_freq = OUTPUT_FREQUENCY;
       wave_freq = DEFAULT_WAV_FREQUENCY;
       amplitude = DEFAULT_WAV_AMPLITUDE;
+   }
+   if(!timer_en)
+   {
+      // Limit to 15 mins
+      timer_duration = 900;
    }
 
    DBL freq;
@@ -744,12 +775,13 @@ int generate(bool use_default_values, bool read_input, float clk_freq, int all_c
 
    if (read_input)
    {
+      allocate_data_memory(&measure_channels, timer_duration);
       if(measurement_start(&hWnd, &hAD, timer_en, timer_duration) == CFG_FAILURE) 
          return ERR_MEASUREMENT;
    }
    else
    {
-      printf("\nSending output for %d seconds \n", timer_duration);
+      LOG_PRINT("Sending output for %d seconds \n", timer_duration);
       Sleep(timer_duration * 1000);
    }
 
