@@ -63,10 +63,16 @@ class DT9837():
     def measure_acceleration(self, duration, timer_enabled=True, use_default_vals=True, save_csv=False):
         """This function measures the acceleration reading
 
-        A 3 axis accelerometer must be connected to the equipment that 
-        will be recorded indefinately until keyboard interrupt
+        A 3 axis accelerometer must be connected to the equipment.
+        Measurment can be recorded indefinately until keyboard interrupt or can be timed in seconds
 
+        :param duration: time in seconds(s) of the output signal
+        :type duration: int
+        :param timer_enabled: enable timed output, defaults to True
+        :type timer_enabled: bool, optional
         :param use_default_vals: use the set default values of the equipment, defaults to True
+        :type use_default_vals: bool, optional
+        :param save_csv: save the output to a csv file, defaults to False
         :type use_default_vals: bool, optional
         """
         # C Functions assignment
@@ -101,8 +107,13 @@ class DT9837():
     def generate_squarewave(self, duration, timer_enabled=True, use_default_vals=True, read_input=True):
         """This function generates a simple squarewave
 
-        Generates a wave at the specified amplitude (V), frequency (Hz) and duration (in s)
+        Generates a wave at the specified amplitude (V), frequency (Hz) and duration (in s).
+        The function can be configured to record the output signal on channel 4 of the analog inputs.
 
+        :param duration: time in seconds(s) of the output signal
+        :type duration: int
+        :param timer_enabled: enable timed output, defaults to True
+        :type timer_enabled: bool, optional
         :param use_default_vals: use the set default values of the equipment, defaults to True
         :type use_default_vals: bool, optional
         :param read_input: record the input into a csv, defaults to True
@@ -146,6 +157,13 @@ class DT9837():
             return ERR_CFG_SUCCESS, ERR_CFG_SUCCESS
 
     def _error_check(self, err_code):
+        """Represents the different error codes that occur from the shared .so library
+
+        Prints out the error output in case of errors.
+
+        :param err_code: the error code (from definitions in file)
+        :type err_code: int
+        """
         err_str = ""
         if err_code != ERR_CFG_SUCCESS:
             if err_code == ERR_CFG_FAILURE:
